@@ -40,9 +40,17 @@ if [ -n "$GITHUB_TOKEN" ]; then
 fi
 
 # ========================================
-# 第0步: 移除 dnf exclude 过滤 (等保2.0三级版的核心问题)
+# 第0步: 可选的系统级兼容处理
 # ========================================
-echo -e "${YELLOW}[0/8] 移除 dnf exclude 过滤规则...${NC}"
+echo -e "${YELLOW}[0/8] 检查系统级兼容处理...${NC}"
+
+if [ "${SHUXUE_ALLOW_SYSTEM_CHANGES:-0}" != "1" ]; then
+    echo -e "${YELLOW}  默认不修改 DNF exclude 规则，也不移除 Apache/PHP。${NC}"
+    echo -e "${YELLOW}  确认本机没有承载其他业务后，可设置 SHUXUE_ALLOW_SYSTEM_CHANGES=1。${NC}"
+    SKIP_SYSTEM_CHANGES=1
+else
+    SKIP_SYSTEM_CHANGES=0
+fi
 
 # 等保2.0三级版在 dnf.conf 和 repo 文件中设置了 exclude= 行
 # 阻止了 nginx/httpd/php 等包的安装和移除
@@ -51,19 +59,20 @@ echo -e "${YELLOW}[0/8] 移除 dnf exclude 过滤规则...${NC}"
 CHANGED=0
 
 # 检查并注释 dnf.conf
-if grep -q '^exclude=' /etc/dnf/dnf.conf 2>/dev/null; then
+if [ "$SKIP_SYSTEM_CHANGES" -eq 0 ] && grep -q '^exclude=' /etc/dnf/dnf.conf 2>/dev/null; then
     echo -e "  发现 /etc/dnf/dnf.conf 中的 exclude 规则，注释掉..."
     sed -i 's/^exclude=/#exclude=/' /etc/dnf/dnf.conf
     CHANGED=1
 fi
 
-if grep -q '^excludepkgs=' /etc/dnf/dnf.conf 2>/dev/null; then
+if [ "$SKIP_SYSTEM_CHANGES" -eq 0 ] && grep -q '^excludepkgs=' /etc/dnf/dnf.conf 2>/dev/null; then
     sed -i 's/^excludepkgs=/#excludepkgs=/' /etc/dnf/dnf.conf
     CHANGED=1
 fi
 
 # 检查并注释所有 repo 文件
 for f in /etc/yum.repos.d/*.repo; do
+    [ "$SKIP_SYSTEM_CHANGES" -eq 1 ] && break
     if [ -f "$f" ] && grep -q '^exclude=' "$f" 2>/dev/null; then
         echo -e "  发现 $f 中的 exclude 规则，注释掉..."
         sed -i 's/^exclude=/#exclude=/' "$f"
@@ -89,21 +98,15 @@ echo ""
 # ========================================
 echo -e "${YELLOW}[0b/8] 移除 Apache/httpd...${NC}"
 
-if rpm -q httpd >/dev/null 2>&1; then
+if [ "$SKIP_SYSTEM_CHANGES" -eq 1 ]; then
+    echo -e "${GREEN}  -> 跳过 Apache/PHP 移除${NC}"
+elif rpm -q httpd >/dev/null 2>&1; then
     echo -e "  检测到 httpd (Apache)，停止并移除..."
     systemctl stop httpd 2>/dev/null || true
     systemctl disable httpd 2>/dev/null || true
 
     # 现在 exclude 已移除，dnf remove 应该能工作
-    dnf remove -y httpd httpd-filesystem httpd-tools php php-cli php-common 2>/dev/null || {
-        echo -e "${YELLOW}  dnf remove 部分失败，使用 rpm 强制移除...${NC}"
-        rpm -e --nodeps httpd 2>/dev/null || true
-        rpm -e --nodeps httpd-filesystem 2>/dev/null || true
-        rpm -e --nodeps httpd-tools 2>/dev/null || true
-        rpm -e --nodeps php 2>/dev/null || true
-        rpm -e --nodeps php-cli 2>/dev/null || true
-        rpm -e --nodeps php-common 2>/dev/null || true
-    }
+    dnf remove -y httpd httpd-filesystem httpd-tools php php-cli php-common
 
     if rpm -q httpd >/dev/null 2>&1; then
         echo -e "${YELLOW}  httpd 仍存在 (已停止服务，不影响 Nginx)${NC}"
@@ -152,7 +155,10 @@ if [ -d "$PROJECT_DIR/.git" ]; then
     fi
 else
     echo -e "  首次部署，从 GitHub 克隆..."
-    rm -rf "$PROJECT_DIR"
+    if [ -e "$PROJECT_DIR" ]; then
+        echo -e "${RED}[ERROR] $PROJECT_DIR 已存在但不是 Git 仓库；请先人工检查并迁移该目录。${NC}"
+        exit 1
+    fi
     git clone "$REPO_URL" "$PROJECT_DIR"
     # 清理 token (安全)
     cd "$PROJECT_DIR"
@@ -222,6 +228,19 @@ echo -e "${YELLOW}[6/8] 配置 systemd 服务...${NC}"
 
 SERVICE_SRC="$PROJECT_DIR/deploy/shuxue.service"
 SERVICE_DST="/etc/systemd/system/shuxue.service"
+ENV_DIR="/etc/shuxue"
+ENV_FILE="$ENV_DIR/shuxue.env"
+
+install -d -m 700 "$ENV_DIR"
+if [ ! -f "$ENV_FILE" ]; then
+    ADMIN_TOKEN="$(python3.8 -c 'import secrets; print(secrets.token_hex(32))')"
+    printf 'SHUXUE_ADMIN_TOKEN=%s\n' "$ADMIN_TOKEN" > "$ENV_FILE"
+    chmod 600 "$ENV_FILE"
+    echo -e "${GREEN}  -> 已生成管理 API 令牌: $ENV_FILE${NC}"
+else
+    chmod 600 "$ENV_FILE"
+    echo -e "${GREEN}  -> 保留现有管理 API 令牌: $ENV_FILE${NC}"
+fi
 
 if [ -f "$SERVICE_SRC" ]; then
     cp "$SERVICE_SRC" "$SERVICE_DST"
@@ -239,6 +258,7 @@ WorkingDirectory=/var/www/shuxue/website/scripts
 Environment="PATH=/var/www/shuxue/venv/bin:/usr/bin"
 Environment="SHUXUE_PORT=8000"
 Environment="SHUXUE_NODE_PATH=/usr/bin/node"
+EnvironmentFile=-/etc/shuxue/shuxue.env
 ExecStart=/var/www/shuxue/venv/bin/gunicorn -w 2 -b 127.0.0.1:8000 server:app
 Restart=always
 RestartSec=3
@@ -301,7 +321,8 @@ server {
     location /css/      { expires 7d; }
     location /js/       { expires 7d; }
     location /vendor/   { expires 30d; }
-    location /uploads/  { expires 1d; }
+    # 禁止直接公开用户上传内容
+    location ^~ /uploads/ { return 404; }
 
     location / {
         try_files $uri $uri/ /index.html;
@@ -375,3 +396,4 @@ echo -e "${YELLOW}待完成:${NC}"
 echo -e "  - DNS 解析: 添加 A 记录 shuxue.icu -> ECS公网IP"
 echo -e "  - SSL 证书: 申请后放到 /etc/nginx/ssl/ 并重新运行此脚本"
 echo -e "  - ICP 备案号: 在页面底部添加"
+
