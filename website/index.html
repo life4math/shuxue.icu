@@ -20,7 +20,11 @@
         <h1>shuxue<span class="proto">.icu</span></h1>
         <span class="nav-subtitle">MATH RESEARCH PLATFORM</span>
       </div>
-      <div class="brand-dropdown" id="brand-dropdown" aria-label="配色选项"></div>
+      <div class="brand-dropdown" id="brand-dropdown" aria-label="配色选项">
+        <button class="brand-dropdown-item" data-theme="PKU" onclick="applyTheme('PKU')"><span class="brand-dropdown-dot" style="background:#B91C1C"></span><span>北大红 · PKU</span><span class="brand-dropdown-check">✓</span></button>
+        <button class="brand-dropdown-item" data-theme="TSINGHUA" onclick="applyTheme('TSINGHUA')"><span class="brand-dropdown-dot" style="background:#7B2FA0"></span><span>清华紫 · TSINGHUA</span><span class="brand-dropdown-check">✓</span></button>
+        <button class="brand-dropdown-item active" data-theme="CYAN" onclick="applyTheme('CYAN')"><span class="brand-dropdown-dot" style="background:#00d4ff"></span><span>赛博青 · CYAN</span><span class="brand-dropdown-check">✓</span></button>
+      </div>
     </div>
     <div class="nav-tabs">
       <button class="nav-tab active" data-page="learning">学习方案</button>
