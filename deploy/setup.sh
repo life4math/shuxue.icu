@@ -214,6 +214,7 @@ mkdir -p "$WEBSITE_DIR/scripts/output"
 
 # 代码由 root 持有；仅运行时目录和兼容数据文件允许 nginx 写入。
 chown -R root:root "$PROJECT_DIR"
+chmod 755 "$PROJECT_DIR"
 find "$WEBSITE_DIR" -type d -exec chmod 755 {} +
 find "$WEBSITE_DIR" -type f -exec chmod 644 {} +
 chown -R nginx:nginx "$WEBSITE_DIR/uploads" "$WEBSITE_DIR/scripts/output"
