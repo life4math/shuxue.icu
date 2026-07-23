@@ -63,5 +63,12 @@ jobs:
           name: shuxue-release-${{ github.sha }}
           path: ${{ runner.temp }}/shuxue-release
 
+      - name: 从部署包检出部署脚本
+        run: |
+          git clone --quiet "$RUNNER_TEMP/shuxue-release/shuxue-release.bundle" \
+            "$RUNNER_TEMP/shuxue-release-source"
+
       - name: 执行部署（含健康检查与失败自动回滚）
-        run: sudo /var/www/shuxue/deploy/deploy.sh --bundle "$RUNNER_TEMP/shuxue-release/shuxue-release.bundle"
+        run: |
+          sudo bash "$RUNNER_TEMP/shuxue-release-source/deploy/deploy.sh" \
+            --bundle "$RUNNER_TEMP/shuxue-release/shuxue-release.bundle"
