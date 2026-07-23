@@ -387,7 +387,11 @@ body {
 <div class="prototype-side">
   <div class="side-brand-wrap" aria-label="选择网站配色">
     <h1 class="side-brand">shuxue<span class="proto">.icu</span></h1>
-    <div class="side-brand-dropdown" id="side-brand-dropdown"></div>
+    <div class="side-brand-dropdown" id="side-brand-dropdown">
+      <button class="brand-dropdown-item" data-theme="PKU" onclick="applyTheme('PKU')"><span class="brand-dropdown-dot" style="background:#B91C1C"></span><span>北大红 · PKU</span><span class="brand-dropdown-check">✓</span></button>
+        <button class="brand-dropdown-item" data-theme="TSINGHUA" onclick="applyTheme('TSINGHUA')"><span class="brand-dropdown-dot" style="background:#7B2FA0"></span><span>清华紫 · TSINGHUA</span><span class="brand-dropdown-check">✓</span></button>
+        <button class="brand-dropdown-item active" data-theme="CYAN" onclick="applyTheme('CYAN')"><span class="brand-dropdown-dot" style="background:#00d4ff"></span><span>赛博青 · CYAN</span><span class="brand-dropdown-check">✓</span></button>
+    </div>
   </div>
   <div class="brand">STUDENT v1.0</div>
   <div class="sub">右侧手机可真实交互：点击底部 Tab 切换模块，刷题页可完整作答并查看解析。</div>
