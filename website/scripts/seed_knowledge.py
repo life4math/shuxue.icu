@@ -25,7 +25,8 @@ def read_static_content():
     source = source.replace("const knowledgeDetails =", "var knowledgeDetails =", 1)
     node_script = (
         "const vm=require('vm');const s={};"
-        "vm.runInNewContext(process.argv[1]+'\\nprocess.stdout.write(JSON.stringify(knowledgeDetails));',s);"
+        "vm.runInNewContext(process.argv[1],s);"
+        "process.stdout.write(JSON.stringify(s.knowledgeDetails));"
     )
     result = subprocess.run(
         ["node", "-e", node_script, source],
