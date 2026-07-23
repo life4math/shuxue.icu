@@ -197,7 +197,7 @@ rollback() {
 }
 
 # ── 部署前完整性校验（拦截损坏文件）────────────────────
-if ! python3 deploy/check_integrity.py; then
+if ! python3.8 deploy/check_integrity.py; then
     log "完整性校验未通过，恢复到部署前版本 $PREV，中止部署。"
     git reset --hard "$PREV"
     exit 1
