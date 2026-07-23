@@ -15,6 +15,9 @@ jobs:
   # ── 阶段一：校验（在 ECS 的自托管 Runner 上跑，但不碰生产目录）──
   verify:
     runs-on: [self-hosted, shuxue]
+    env:
+      PIP_INDEX_URL: https://mirrors.aliyun.com/pypi/simple
+      PIP_DISABLE_PIP_VERSION_CHECK: "1"
     steps:
       - name: 检出代码
         uses: actions/checkout@v4
