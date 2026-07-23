@@ -1,4 +1,4 @@
-# 启用前必须先为 admin.shuxue.icu 配置 DNS 和独立 SSL 证书。
+# admin.shuxue.icu 独立教师后台；证书由 Certbot 签发并自动续期。
 server {
     listen 80;
     listen [::]:80;
