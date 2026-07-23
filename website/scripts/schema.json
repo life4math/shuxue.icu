@@ -1,0 +1,202 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "shuxue.icu Data Schema",
+  "description": "高考数学题库+方法库统一数据格式",
+  "definitions": {
+    "module_enum": {
+      "type": "string",
+      "enum": ["FUNC", "GEOM", "ALGE", "PROB", "CALC"],
+      "description": "FUNC=函数与导数, GEOM=几何与向量, ALGE=代数与不等式, PROB=概率与统计, CALC=微积分初步"
+    },
+    "question_type_enum": {
+      "type": "string",
+      "enum": ["choice", "fill", "solve", "proof"],
+      "description": "choice=选择题, fill=填空题, solve=解答题, proof=证明题"
+    },
+    "difficulty_enum": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 5,
+      "description": "1=基础, 2=简单, 3=中等, 4=较难, 5=困难"
+    },
+    "source_type_enum": {
+      "type": "string",
+      "enum": ["真题", "模拟", "教案", "自编", "手写笔记"],
+      "description": "题目来源类型"
+    },
+    "review_status_enum": {
+      "type": "string",
+      "enum": ["pending", "approved", "rejected", "editing"],
+      "description": "审核状态"
+    },
+    "ocr_method_enum": {
+      "type": "string",
+      "enum": ["mathpix", "vision_ai", "pdfplumber", "mammoth", "manual"],
+      "description": "OCR/提取方法"
+    },
+    "source_meta": {
+      "type": "object",
+      "properties": {
+        "type": { "$ref": "#/definitions/source_type_enum" },
+        "year": { "type": "integer", "minimum": 2000 },
+        "region": { "type": "string", "examples": ["全国I卷", "全国II卷", "北京卷", "江苏卷"] },
+        "original_file": { "type": "string", "description": "原始素材文件路径" },
+        "page_number": { "type": "integer", "description": "PDF页码（可选）" },
+        "ocr_method": { "$ref": "#/definitions/ocr_method_enum" }
+      },
+      "required": ["type"]
+    },
+    "option": {
+      "type": "object",
+      "properties": {
+        "label": { "type": "string", "enum": ["A", "B", "C", "D"] },
+        "content": { "type": "string", "description": "选项内容，公式用 $LaTeX$" }
+      },
+      "required": ["label", "content"]
+    },
+    "stats": {
+      "type": "object",
+      "properties": {
+        "total": { "type": "integer", "minimum": 0, "description": "作答总人次" },
+        "correct": { "type": "integer", "minimum": 0 },
+        "accuracy": { "type": "number", "minimum": 0, "maximum": 1 },
+        "avg_time": { "type": "number", "description": "平均用时(秒)" }
+      },
+      "required": ["total", "correct", "accuracy"]
+    }
+  },
+
+  "question": {
+    "type": "object",
+    "properties": {
+      "id": { "type": "string", "pattern": "^Q\\d{3,}$" },
+      "module": { "$ref": "#/definitions/module_enum" },
+      "knowledge_points": {
+        "type": "array",
+        "items": { "type": "string", "pattern": "^[A-Z]+-\\d{2}-\\d{2}-\\d{2}$" },
+        "minItems": 1
+      },
+      "difficulty": { "$ref": "#/definitions/difficulty_enum" },
+      "type": { "$ref": "#/definitions/question_type_enum" },
+      "stem": { "type": "string", "description": "题干，数学公式用 $LaTeX$ 包裹" },
+      "options": {
+        "type": "array",
+        "items": { "$ref": "#/definitions/option" },
+        "description": "选择题选项，其他题型为空数组"
+      },
+      "answer": { "type": "string", "description": "答案：选择题给字母，填空题给值，解答题给关键结果" },
+      "analysis": { "type": "string", "description": "解析步骤，公式用 $LaTeX$" },
+      "tags": {
+        "type": "array",
+        "items": { "type": "string" },
+        "description": "自由标签，用于搜索和分类"
+      },
+      "source": { "$ref": "#/definitions/source_meta" },
+      "stats": { "$ref": "#/definitions/stats" },
+      "related_methods": {
+        "type": "array",
+        "items": { "type": "string", "pattern": "^M\\d{3,}$" },
+        "description": "关联解题方法ID列表"
+      },
+      "status": {
+        "type": "string",
+        "enum": ["active", "archived", "draft"],
+        "default": "active"
+      },
+      "created_at": { "type": "string", "format": "date-time" },
+      "updated_at": { "type": "string", "format": "date-time" }
+    },
+    "required": ["id", "module", "difficulty", "type", "stem", "answer"]
+  },
+
+  "method": {
+    "type": "object",
+    "properties": {
+      "id": { "type": "string", "pattern": "^M\\d{3,}$" },
+      "name": { "type": "string", "description": "方法名称（中文）" },
+      "category": { "type": "string", "description": "方法分类（如：数列求和、不等式证明）" },
+      "module": { "$ref": "#/definitions/module_enum" },
+      "knowledge_points": {
+        "type": "array",
+        "items": { "type": "string", "pattern": "^[A-Z]+-\\d{2}-\\d{2}-\\d{2}$" }
+      },
+      "applicable_types": {
+        "type": "array",
+        "items": { "$ref": "#/definitions/question_type_enum" },
+        "description": "此方法适用的题型"
+      },
+      "difficulty_range": {
+        "type": "array",
+        "items": { "$ref": "#/definitions/difficulty_enum" },
+        "minItems": 2,
+        "maxItems": 2,
+        "description": "[最低难度, 最高难度]"
+      },
+      "keywords": {
+        "type": "array",
+        "items": { "type": "string" },
+        "description": "搜索关键词"
+      },
+      "principle": { "type": "string", "description": "方法原理一句话概括" },
+      "steps": {
+        "type": "array",
+        "items": { "type": "string" },
+        "minItems": 2,
+        "description": "解题步骤列表，公式用 $LaTeX$"
+      },
+      "common_forms": {
+        "type": "array",
+        "items": { "type": "string" },
+        "description": "常见形式/公式模板"
+      },
+      "pitfalls": {
+        "type": "array",
+        "items": { "type": "string" },
+        "description": "易错点提醒"
+      },
+      "examples": {
+        "type": "array",
+        "items": { "type": "string", "pattern": "^Q\\d{3,}$" },
+        "description": "关联题目ID列表"
+      },
+      "status": {
+        "type": "string",
+        "enum": ["active", "archived", "draft"],
+        "default": "active"
+      },
+      "created_at": { "type": "string", "format": "date-time" },
+      "updated_at": { "type": "string", "format": "date-time" }
+    },
+    "required": ["id", "name", "module", "principle", "steps"]
+  },
+
+  "review_item": {
+    "type": "object",
+    "properties": {
+      "id": { "type": "string", "pattern": "^R\\d{3,}$" },
+      "status": { "$ref": "#/definitions/review_status_enum" },
+      "source": { "type": "string", "description": "来源标记：image_ocr | pdf_parse | docx_parse | text_parse | manual" },
+      "sourceFile": { "type": "string", "description": "原始文件名" },
+      "extractedAt": { "type": "string", "format": "date-time" },
+      "data": {
+        "oneOf": [
+          { "$ref": "#/question" },
+          {
+            "type": "object",
+            "properties": {
+              "methodType": { "type": "string", "const": "method" }
+            },
+            "allOf": [
+              { "$ref": "#/method" }
+            ]
+          }
+        ]
+      },
+      "aiConfidence": { "type": "number", "minimum": 0, "maximum": 1 },
+      "reviewNotes": { "type": "string" },
+      "approvedBy": { "type": "string" },
+      "approvedAt": { "type": "string", "format": "date-time" }
+    },
+    "required": ["id", "status", "source", "data", "aiConfidence"]
+  }
+}

@@ -1,0 +1,874 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>shuxue.icu - 高考数学教研平台</title>
+  <link rel="stylesheet" href="vendor/katex.min.css">
+  <link rel="stylesheet" href="css/style.css">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+  <script src="vendor/echarts.min.js"></script>
+  <script src="vendor/katex.min.js"></script>
+</head>
+<body>
+  <!-- 顶部导航栏 -->
+  <nav class="navbar">
+    <div class="nav-brand">
+      <div class="nav-title">
+        <h1>shuxue<span class="proto">.icu</span></h1>
+        <span class="nav-subtitle">MATH RESEARCH PLATFORM</span>
+      </div>
+      <div class="brand-dropdown" id="brand-dropdown"></div>
+    </div>
+    <div class="nav-tabs">
+      <button class="nav-tab active" data-page="learning">学习方案</button>
+      <button class="nav-tab" data-page="analytics">学情分析</button>
+      <button class="nav-tab" data-page="dashboard">DASHBOARD</button>
+      <button class="nav-tab" data-page="pricing">订阅计划</button>
+      <button class="nav-tab" data-page="about">关于我们</button>
+    </div>
+    <div class="nav-user">
+      <span class="nav-date" id="nav-date">2026-07-22 WED</span>
+      <span class="user-avatar">LI</span>
+    </div>
+  </nav>
+
+  <!-- 主内容区 -->
+  <main class="main-content">
+
+    <!-- ===== 学习方案（题库 + 知识图谱 + 方法库） ===== -->
+    <div class="page active" id="page-learning">
+      <!-- 子导航条 -->
+      <div class="sub-nav" id="learning-subnav">
+        <button class="sub-nav-btn active" data-sub="questions">题库</button>
+        <button class="sub-nav-btn" data-sub="knowledge">知识图谱</button>
+        <button class="sub-nav-btn" data-sub="methods">方法库</button>
+      </div>
+
+      <!-- 题库子页 -->
+      <div class="sub-page active" id="sub-questions">
+        <!-- 筛选工具栏 -->
+        <div class="filter-bar">
+          <div class="filter-group">
+            <label>MODULE</label>
+            <select id="filter-module">
+              <option value="">全部模块</option>
+              <option value="FUNC">函数与导数</option>
+              <option value="GEOM">几何与向量</option>
+              <option value="ALGE">代数与不等式</option>
+              <option value="PROB">概率与统计</option>
+              <option value="CALC">微积分初步</option>
+            </select>
+          </div>
+          <div class="filter-group">
+            <label>LEVEL</label>
+            <select id="filter-difficulty">
+              <option value="">ALL LEVELS</option>
+              <option value="1">LV.1 基础</option>
+              <option value="2">LV.2 简单</option>
+              <option value="3">LV.3 中等</option>
+              <option value="4">LV.4 较难</option>
+              <option value="5">LV.5 困难</option>
+            </select>
+          </div>
+          <div class="filter-group">
+            <label>TYPE</label>
+            <select id="filter-type">
+              <option value="">全部题型</option>
+              <option value="choice">选择题</option>
+              <option value="fill">填空题</option>
+              <option value="solve">解答题</option>
+              <option value="proof">证明题</option>
+            </select>
+          </div>
+          <div class="filter-search">
+            <input type="text" id="filter-keyword" placeholder="SEARCH KEYWORD...">
+            <button class="btn-search" onclick="filterQuestions()">RUN</button>
+          </div>
+        </div>
+
+        <!-- 题目统计条 -->
+        <div class="question-stats">
+          <span>TOTAL <strong id="q-total">0</strong></span>
+          <span>FILTERED <strong id="q-filtered">0</strong></span>
+        </div>
+
+        <!-- 题目列表 -->
+        <div class="question-list" id="question-list"></div>
+
+        <!-- 题目详情弹窗 -->
+        <div class="modal-overlay" id="question-modal">
+          <div class="modal">
+            <div class="modal-header">
+              <h3 id="modal-title">题目详情</h3>
+              <button class="modal-close" onclick="closeModal()">×</button>
+            </div>
+            <div class="modal-body" id="modal-body"></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- 知识图谱子页 -->
+      <div class="sub-page" id="sub-knowledge">
+        <div class="knowledge-header">
+          <h2>KNOWLEDGE TREE</h2>
+          <p>52 NODES · 5 MODULES · 5 LEVELS</p>
+        </div>
+        <div class="knowledge-layout">
+          <div class="knowledge-tree-panel">
+            <div class="tree-toolbar">
+              <button class="btn-sm" onclick="expandAll()">EXPAND</button>
+              <button class="btn-sm" onclick="collapseAll()">COLLAPSE</button>
+              <button class="btn-sm" data-tier-lock="pro" onclick="annotateNode()">ANNOTATE</button>
+            </div>
+            <div class="knowledge-tree" id="knowledge-tree"></div>
+          </div>
+          <div class="knowledge-detail-panel" id="knowledge-detail">
+            <div class="detail-empty">
+              <p>SELECT NODE</p>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- 方法库子页 -->
+      <div class="sub-page" id="sub-methods">
+        <div class="stats-grid" style="grid-template-columns: repeat(3, 1fr)">
+          <div class="stat-card">
+            <div class="stat-info">
+              <span class="stat-label">TOTAL METHODS</span>
+              <span class="stat-value" id="stat-methods-total">0</span>
+            </div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-info">
+              <span class="stat-label">COVERED MODULES</span>
+              <span class="stat-value" id="stat-methods-modules">0</span>
+            </div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-info">
+              <span class="stat-label">LINKED QUESTIONS</span>
+              <span class="stat-value" id="stat-methods-linked">0</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- 方法列表 -->
+        <div class="chart-card full">
+          <div class="chart-header">
+            <h3>解题方法库</h3>
+            <span class="chart-badge green">METHOD BANK</span>
+          </div>
+          <div class="methods-list" id="methods-list"></div>
+        </div>
+
+        <!-- 方法详情 -->
+        <div class="chart-card full" id="method-detail-card" style="display:none">
+          <div class="chart-header">
+            <h3 id="method-detail-title">METHOD DETAIL</h3>
+          </div>
+          <div class="method-detail-content" id="method-detail-content"></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ===== 学情分析 ===== -->
+    <div class="page" id="page-analytics">
+      <!-- 学生选择器 -->
+      <div class="student-selector">
+        <div class="student-cards" id="student-cards"></div>
+      </div>
+
+      <!-- 学情详情 -->
+      <div id="student-detail">
+        <!-- 总体指标 -->
+        <div class="stats-grid" id="student-stats"></div>
+
+        <!-- 图表区域 -->
+        <div class="charts-row">
+          <div class="chart-card half">
+            <div class="chart-header">
+              <h3>知识点掌握雷达图</h3>
+              <span class="chart-badge">RADAR</span>
+            </div>
+            <div class="chart-container" id="chart-radar"></div>
+          </div>
+          <div class="chart-card half">
+            <div class="chart-header">
+              <h3>正确率趋势</h3>
+              <span class="chart-badge green">14D TREND</span>
+            </div>
+            <div class="chart-container" id="chart-student-trend"></div>
+          </div>
+        </div>
+
+        <div class="charts-row">
+          <div class="chart-card half">
+            <div class="chart-header">
+              <h3>各难度正确率</h3>
+              <span class="chart-badge">ABILITY</span>
+            </div>
+            <div class="chart-container" id="chart-difficulty-bar"></div>
+          </div>
+          <div class="chart-card half">
+            <div class="chart-header">
+              <h3>知识点掌握度</h3>
+              <span class="chart-badge orange">DETAIL</span>
+            </div>
+            <div class="knowledge-mastery-list" id="knowledge-mastery"></div>
+          </div>
+        </div>
+
+        <!-- 薄弱项分析 -->
+        <div class="chart-card full">
+          <div class="chart-header">
+            <h3>薄弱知识点分析</h3>
+            <span class="chart-badge red">CRITICAL</span>
+          </div>
+          <div class="weak-points-list" id="weak-points"></div>
+        </div>
+
+        <!-- 学习建议 -->
+        <div class="chart-card full">
+          <div class="chart-header">
+            <h3>推荐学习路径</h3>
+            <span class="chart-badge green">SUGGESTED</span>
+          </div>
+          <div class="recommendations" id="recommendations"></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ===== DASHBOARD（概览 + 上传管线 + 审核） ===== -->
+    <div class="page" id="page-dashboard">
+      <!-- 概览统计区 -->
+      <div class="dash-overview">
+        <div class="stats-grid">
+          <div class="stat-card">
+            <div class="stat-info">
+              <span class="stat-label">TOTAL QUESTIONS</span>
+              <span class="stat-value" id="stat-total-questions">0</span>
+              <span class="stat-trend up">+3 THIS WEEK</span>
+            </div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-info">
+              <span class="stat-label">KNOWLEDGE POINTS</span>
+              <span class="stat-value" id="stat-knowledge-points">0</span>
+              <span class="stat-trend up">COVERAGE 81%</span>
+            </div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-info">
+              <span class="stat-label">PENDING REVIEW</span>
+              <span class="stat-value" id="stat-pending">0</span>
+            </div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-info">
+              <span class="stat-label">AI AVG CONFIDENCE</span>
+              <span class="stat-value" id="stat-confidence">0%</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- 高频错题 -->
+        <div class="chart-card full">
+          <div class="chart-header">
+            <h3>高频错题 TOP 5</h3>
+            <span class="chart-badge red">CRITICAL</span>
+          </div>
+          <div class="error-table-wrapper">
+            <table class="error-table" id="error-table">
+              <thead>
+                <tr>
+                  <th>RANK</th>
+                  <th>QUESTION</th>
+                  <th>MODULE</th>
+                  <th>ERR RATE</th>
+                  <th>COUNT</th>
+                  <th>STATUS</th>
+                </tr>
+              </thead>
+              <tbody></tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+
+      <!-- 管线步骤条 -->
+      <div class="pipeline-bar">
+        <div class="pipeline-step" id="pipe-upload">
+          <span class="pipe-num">01</span>
+          <span class="pipe-label">UPLOAD</span>
+          <span class="pipe-status" id="pipe-upload-status">IDLE</span>
+        </div>
+        <div class="pipeline-connector"></div>
+        <div class="pipeline-step" id="pipe-ocr">
+          <span class="pipe-num">02</span>
+          <span class="pipe-label">EXTRACT</span>
+          <span class="pipe-status" id="pipe-ocr-status">IDLE</span>
+        </div>
+        <div class="pipeline-connector"></div>
+        <div class="pipeline-step" id="pipe-llm">
+          <span class="pipe-num">03</span>
+          <span class="pipe-label">STRUCTURE</span>
+          <span class="pipe-status" id="pipe-llm-status">IDLE</span>
+        </div>
+        <div class="pipeline-connector"></div>
+        <div class="pipeline-step" id="pipe-review">
+          <span class="pipe-num">04</span>
+          <span class="pipe-label">REVIEW</span>
+          <span class="pipe-status" id="pipe-review-status">IDLE</span>
+        </div>
+        <div class="pipeline-connector"></div>
+        <div class="pipeline-step" id="pipe-store">
+          <span class="pipe-num">05</span>
+          <span class="pipe-label">STORE</span>
+          <span class="pipe-status" id="pipe-store-status">IDLE</span>
+        </div>
+      </div>
+
+      <!-- 上传区域 -->
+      <div class="upload-zone" id="upload-zone">
+        <div class="upload-zone-inner">
+          <div class="upload-icon">DROP FILES HERE</div>
+          <div class="upload-sub">or click to select</div>
+          <div class="upload-types">PNG · JPG · PDF · DOCX · TXT · MD</div>
+        </div>
+        <input type="file" id="file-input" multiple accept=".png,.jpg,.jpeg,.bmp,.webp,.pdf,.docx,.doc,.txt,.md,.markdown" style="display:none">
+      </div>
+
+      <!-- 已上传文件列表 -->
+      <div class="chart-card full" id="uploaded-files-card" style="display:none">
+        <div class="chart-header">
+          <h3>UPLOADED FILES</h3>
+          <div class="upload-actions">
+            <button class="btn-accent" onclick="processAllFiles()" data-tier-lock="pro">PROCESS ALL</button>
+            <button class="btn-ghost" onclick="clearUploads()">CLEAR</button>
+          </div>
+        </div>
+        <div class="file-list" id="file-list"></div>
+      </div>
+
+      <!-- 处理结果 -->
+      <div class="chart-card full" id="process-results-card" style="display:none">
+        <div class="chart-header">
+          <h3>EXTRACTION RESULTS</h3>
+          <span class="chart-badge green" id="results-count-badge">0 ITEMS</span>
+        </div>
+        <div class="results-list" id="results-list"></div>
+      </div>
+
+      <!-- 标准格式编辑器 -->
+      <div class="chart-card full" id="format-editor-card" style="display:none">
+        <div class="chart-header">
+          <h3 id="editor-title">FORMAT EDITOR</h3>
+          <div class="editor-actions">
+            <button class="btn-accent" onclick="saveFromEditor()">SAVE</button>
+            <button class="btn-ghost" onclick="closeEditor()">CLOSE</button>
+          </div>
+        </div>
+
+        <!-- 题目编辑表单 -->
+        <div class="editor-form" id="question-editor" style="display:none">
+          <div class="form-grid">
+            <div class="form-field">
+              <label>ID</label>
+              <input type="text" id="ed-id" readonly class="field-readonly">
+            </div>
+            <div class="form-field">
+              <label>MODULE</label>
+              <select id="ed-module">
+                <option value="FUNC">FUNC · 函数与导数</option>
+                <option value="GEOM">GEOM · 几何与向量</option>
+                <option value="ALGE">ALGE · 代数与不等式</option>
+                <option value="PROB">PROB · 概率与统计</option>
+                <option value="CALC">CALC · 微积分初步</option>
+              </select>
+            </div>
+            <div class="form-field">
+              <label>DIFFICULTY</label>
+              <select id="ed-difficulty">
+                <option value="1">LV.1 基础</option>
+                <option value="2">LV.2 简单</option>
+                <option value="3">LV.3 中等</option>
+                <option value="4">LV.4 较难</option>
+                <option value="5">LV.5 困难</option>
+              </select>
+            </div>
+            <div class="form-field">
+              <label>TYPE</label>
+              <select id="ed-type">
+                <option value="choice">CHOICE · 选择题</option>
+                <option value="fill">FILL · 填空题</option>
+                <option value="solve">SOLVE · 解答题</option>
+                <option value="proof">PROOF · 证明题</option>
+              </select>
+            </div>
+          </div>
+
+          <div class="form-field full-width">
+            <label>STEM · 题干</label>
+            <textarea id="ed-stem" rows="4" placeholder="输入题干，公式用 $LaTeX$ 包裹"></textarea>
+            <div class="latex-preview" id="stem-preview"></div>
+          </div>
+
+          <div class="form-field full-width" id="options-section">
+            <label>OPTIONS · 选项（选择题）</label>
+            <div class="options-grid" id="ed-options">
+              <div class="option-row">
+                <span class="option-label">A</span>
+                <input type="text" class="option-input" data-label="A" placeholder="选项内容，公式用 $LaTeX$">
+              </div>
+              <div class="option-row">
+                <span class="option-label">B</span>
+                <input type="text" class="option-input" data-label="B" placeholder="选项内容，公式用 $LaTeX$">
+              </div>
+              <div class="option-row">
+                <span class="option-label">C</span>
+                <input type="text" class="option-input" data-label="C" placeholder="选项内容，公式用 $LaTeX$">
+              </div>
+              <div class="option-row">
+                <span class="option-label">D</span>
+                <input type="text" class="option-input" data-label="D" placeholder="选项内容，公式用 $LaTeX$">
+              </div>
+            </div>
+          </div>
+
+          <div class="form-grid">
+            <div class="form-field">
+              <label>ANSWER · 答案</label>
+              <input type="text" id="ed-answer" placeholder="选择题给字母，填空题给值">
+            </div>
+            <div class="form-field full-width">
+              <label>ANALYSIS · 解析</label>
+              <textarea id="ed-analysis" rows="3" placeholder="解析步骤，公式用 $LaTeX$"></textarea>
+            </div>
+          </div>
+
+          <div class="form-field full-width">
+            <label>TAGS · 标签</label>
+            <input type="text" id="ed-tags" placeholder="逗号分隔，如：导数,极值,恒成立">
+          </div>
+
+          <div class="form-field full-width">
+            <label>KNOWLEDGE POINTS · 知识点</label>
+            <input type="text" id="ed-kp" placeholder="逗号分隔，如：FUNC-02-02-01">
+          </div>
+
+          <div class="form-grid">
+            <div class="form-field">
+              <label>SOURCE TYPE</label>
+              <select id="ed-source-type">
+                <option value="真题">真题</option>
+                <option value="模拟">模拟</option>
+                <option value="教案">教案</option>
+                <option value="自编">自编</option>
+                <option value="手写笔记">手写笔记</option>
+              </select>
+            </div>
+            <div class="form-field">
+              <label>YEAR</label>
+              <input type="number" id="ed-source-year" min="2000" value="2024">
+            </div>
+            <div class="form-field">
+              <label>REGION</label>
+              <input type="text" id="ed-source-region" placeholder="全国I卷等">
+            </div>
+          </div>
+        </div>
+
+        <!-- 方法编辑表单 -->
+        <div class="editor-form" id="method-editor" style="display:none">
+          <div class="form-grid">
+            <div class="form-field">
+              <label>ID</label>
+              <input type="text" id="ed-m-id" readonly class="field-readonly">
+            </div>
+            <div class="form-field">
+              <label>NAME · 方法名称</label>
+              <input type="text" id="ed-m-name" placeholder="如：裂项相消法">
+            </div>
+            <div class="form-field">
+              <label>CATEGORY · 分类</label>
+              <input type="text" id="ed-m-category" placeholder="如：数列求和">
+            </div>
+            <div class="form-field">
+              <label>MODULE</label>
+              <select id="ed-m-module">
+                <option value="FUNC">FUNC · 函数与导数</option>
+                <option value="GEOM">GEOM · 几何与向量</option>
+                <option value="ALGE">ALGE · 代数与不等式</option>
+                <option value="PROB">PROB · 概率与统计</option>
+                <option value="CALC">CALC · 微积分初步</option>
+              </select>
+            </div>
+          </div>
+
+          <div class="form-field full-width">
+            <label>PRINCIPLE · 原理</label>
+            <textarea id="ed-m-principle" rows="2" placeholder="一句话概括方法原理"></textarea>
+          </div>
+
+          <div class="form-field full-width">
+            <label>STEPS · 解题步骤</label>
+            <div id="ed-m-steps" class="steps-editor">
+              <div class="step-row"><span class="step-num">01</span><input type="text" class="step-input" placeholder="步骤1"></div>
+              <div class="step-row"><span class="step-num">02</span><input type="text" class="step-input" placeholder="步骤2"></div>
+              <div class="step-row"><span class="step-num">03</span><input type="text" class="step-input" placeholder="步骤3"></div>
+              <div class="step-row"><span class="step-num">04</span><input type="text" class="step-input" placeholder="步骤4"></div>
+              <div class="step-row"><span class="step-num">05</span><input type="text" class="step-input" placeholder="步骤5"></div>
+            </div>
+            <button class="btn-ghost" onclick="addStep()">+ ADD STEP</button>
+          </div>
+
+          <div class="form-field full-width">
+            <label>COMMON FORMS · 常见形式</label>
+            <textarea id="ed-m-forms" rows="3" placeholder="公式模板，每行一个，用 $LaTeX$"></textarea>
+          </div>
+
+          <div class="form-field full-width">
+            <label>PITFALLS · 易错点</label>
+            <textarea id="ed-m-pitfalls" rows="2" placeholder="每行一个易错点"></textarea>
+          </div>
+
+          <div class="form-grid">
+            <div class="form-field">
+              <label>KEYWORDS · 关键词</label>
+              <input type="text" id="ed-m-keywords" placeholder="逗号分隔">
+            </div>
+            <div class="form-field">
+              <label>APPLICABLE TYPES</label>
+              <input type="text" id="ed-m-types" placeholder="choice, fill, solve, proof">
+            </div>
+            <div class="form-field">
+              <label>DIFFICULTY RANGE</label>
+              <input type="text" id="ed-m-drange" placeholder="3-5">
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- 审核队列 -->
+      <div class="chart-card full">
+        <div class="chart-header">
+          <h3>审核队列</h3>
+          <span class="chart-badge green">AUTO INGEST</span>
+        </div>
+        <div class="review-list" id="review-list"></div>
+      </div>
+
+      <!-- 审核详情预览 -->
+      <div class="chart-card full" id="review-detail-card" style="display:none">
+        <div class="chart-header">
+          <h3 id="review-detail-title">ITEM DETAIL</h3>
+          <div class="review-actions">
+            <button class="btn-approve" onclick="approveItem()" data-tier-lock="pro">APPROVE</button>
+            <button class="btn-reject" onclick="rejectItem()">REJECT</button>
+            <button class="btn-edit" onclick="editItem()" data-tier-lock="pro">EDIT</button>
+          </div>
+        </div>
+        <div class="review-detail-content" id="review-detail-content"></div>
+      </div>
+    </div>
+
+    <!-- ===== 订阅计划 ===== -->
+    <div class="page" id="page-pricing">
+      <div class="pricing-hero">
+        <h2>PRICING</h2>
+        <p>教研工具平台 · 不面向学生 · 数据驱动教学 · 合规运营</p>
+      </div>
+
+      <div class="tier-toggle">
+        <button class="active" onclick="switchBilling('monthly')">MONTHLY</button>
+        <button onclick="switchBilling('yearly')">YEARLY · SAVE 17%</button>
+      </div>
+
+      <div class="pricing-grid">
+        <!-- FREE -->
+        <div class="pricing-card">
+          <div class="tier-name">TIER 01</div>
+          <div class="tier-label">FREE</div>
+          <div class="tier-desc">教研入门 · 零成本体验核心功能</div>
+          <div class="tier-price"><span class="currency">¥</span>0<span class="period">/月</span></div>
+          <div class="tier-unit">永久免费 · 无需付费</div>
+          <button class="tier-cta" onclick="showToast('免费版无需注册，直接使用')">START FREE</button>
+          <ul class="feature-list">
+            <li><span class="feat-key">题库浏览</span><span class="feat-val">10 题/日</span></li>
+            <li><span class="feat-key">知识图谱</span><span class="feat-val">仅查看</span></li>
+            <li><span class="feat-key">学情分析</span><span class="feat-val limit">3 次/月</span></li>
+            <li><span class="feat-key">AI 审核</span><span class="feat-val limit">--</span></li>
+            <li><span class="feat-key">方法模板</span><span class="feat-val">仅查看</span></li>
+            <li><span class="feat-key">文件上传</span><span class="feat-val">1 次/日</span></li>
+            <li><span class="feat-key">数据导出</span><span class="feat-val limit">--</span></li>
+            <li><span class="feat-key">Blog</span><span class="feat-val unlimited">完整访问</span></li>
+          </ul>
+        </div>
+
+        <!-- PRO (Featured) -->
+        <div class="pricing-card featured">
+          <div class="tier-name">TIER 02</div>
+          <div class="tier-label">PRO</div>
+          <div class="tier-desc">个人教师 · 全功能解锁 · AI 驱动教研</div>
+          <div class="tier-price"><span class="currency">¥</span><span id="pro-price">49</span><span class="period" id="pro-period">/月</span></div>
+          <div class="tier-unit" id="pro-unit">单座席 · 按月计费</div>
+          <button class="tier-cta" onclick="showToast('Pro 版即将开放注册')">GET PRO</button>
+          <ul class="feature-list">
+            <li><span class="feat-key">题库浏览</span><span class="feat-val unlimited">无限</span></li>
+            <li><span class="feat-key">知识图谱</span><span class="feat-val">查看 + 注解</span></li>
+            <li><span class="feat-key">学情分析</span><span class="feat-val unlimited">无限 + PDF</span></li>
+            <li><span class="feat-key">AI 审核</span><span class="feat-val unlimited">无限 · 优先队列</span></li>
+            <li><span class="feat-key">方法模板</span><span class="feat-val">查看 + 创建</span></li>
+            <li><span class="feat-key">文件上传</span><span class="feat-val">批量 · 10 次/日</span></li>
+            <li><span class="feat-key">数据导出</span><span class="feat-val">CSV + PDF</span></li>
+            <li><span class="feat-key">Blog</span><span class="feat-val">完整 + 草稿</span></li>
+          </ul>
+        </div>
+
+        <!-- TEAM -->
+        <div class="pricing-card">
+          <div class="tier-name">TIER 03</div>
+          <div class="tier-label">TEAM</div>
+          <div class="tier-desc">教研组协作 · 共享题库 · 统一管理</div>
+          <div class="tier-price"><span class="currency">¥</span><span id="team-price">199</span><span class="period" id="team-period">/月</span></div>
+          <div class="tier-unit" id="team-unit">5 座席 · 含管理后台</div>
+          <button class="tier-cta" onclick="showToast('Team 版即将开放注册')">GET TEAM</button>
+          <ul class="feature-list">
+            <li><span class="feat-key">Pro 全功能</span><span class="feat-val unlimited">包含</span></li>
+            <li><span class="feat-key">共享题库</span><span class="feat-val">组内协作编辑</span></li>
+            <li><span class="feat-key">组级分析</span><span class="feat-val">团队仪表盘</span></li>
+            <li><span class="feat-key">方法共享</span><span class="feat-val">组模板流通</span></li>
+            <li><span class="feat-key">座席管理</span><span class="feat-val">5-20 增购 ¥39/席</span></li>
+            <li><span class="feat-key">优先支持</span><span class="feat-val unlimited">24h 响应</span></li>
+            <li><span class="feat-key">私有部署</span><span class="feat-val limit">--</span></li>
+          </ul>
+        </div>
+
+        <!-- API -->
+        <div class="pricing-card">
+          <div class="tier-name">TIER 04</div>
+          <div class="tier-label">API</div>
+          <div class="tier-desc">结构化数据服务 · 教研数据接口</div>
+          <div class="tier-price"><span class="currency">¥</span>500<span class="period">/月起</span></div>
+          <div class="tier-unit">按调用量计费 · ¥0.01/次</div>
+          <button class="tier-cta" onclick="showToast('API 服务需申请审核')">REQUEST ACCESS</button>
+          <ul class="feature-list">
+            <li><span class="feat-key">题库查询</span><span class="feat-val">RESTful API</span></li>
+            <li><span class="feat-key">知识图谱</span><span class="feat-val">结构化 JSON</span></li>
+            <li><span class="feat-key">解题路径</span><span class="feat-val">步骤化数据</span></li>
+            <li><span class="feat-key">学情报告</span><span class="feat-val">脱敏聚合数据</span></li>
+            <li><span class="feat-key">数据包</span><span class="feat-val">¥2K-10K/主题域</span></li>
+            <li><span class="feat-key">SLA</span><span class="feat-val">99.5% 可用性</span></li>
+            <li><span class="feat-key">定制服务</span><span class="feat-val">¥20K+ 项目制</span></li>
+          </ul>
+        </div>
+      </div>
+
+      <!-- ADE Synergy -->
+      <div class="ade-section">
+        <h3>ADE MODEL · SYNERGY</h3>
+        <div class="ade-flow">
+          <div class="ade-block">
+            <div class="ade-letter">D</div>
+            <div class="ade-name">FREEMIUM</div>
+            <div class="ade-role">零门槛获客<br>免费层吸引教师<br>行为数据沉淀资产</div>
+          </div>
+          <div class="ade-arrow">→</div>
+          <div class="ade-block">
+            <div class="ade-letter">A</div>
+            <div class="ade-name">SAAS</div>
+            <div class="ade-role">订阅转化核心<br>Pro/Team 月付<br>稳定现金流引擎</div>
+          </div>
+          <div class="ade-arrow">→</div>
+          <div class="ade-block">
+            <div class="ade-letter">E</div>
+            <div class="ade-name">DATA API</div>
+            <div class="ade-role">数据变现上层<br>脱敏结构化数据<br>高客单价利润池</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Feature Matrix -->
+      <div class="matrix-section">
+        <h3>FEATURE MATRIX</h3>
+        <table class="matrix-table">
+          <thead>
+            <tr>
+              <th style="width:22%">FEATURE</th>
+              <th style="width:19%">FREE</th>
+              <th style="width:19%">PRO</th>
+              <th style="width:19%">TEAM</th>
+              <th style="width:21%">API</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr><td class="cat">QUESTION BANK</td><td></td><td></td><td></td><td></td></tr>
+            <tr><td class="row-label">题库浏览</td><td class="limit-val">10/日</td><td class="check">∞</td><td class="check">∞</td><td class="check">∞</td></tr>
+            <tr><td class="row-label">题目创建</td><td class="no">--</td><td class="check">✓</td><td class="check">✓</td><td class="no">--</td></tr>
+            <tr><td class="row-label">批量上传</td><td class="limit-val">1/日</td><td class="limit-val">10/日</td><td class="check">∞</td><td class="no">--</td></tr>
+            <tr><td class="row-label">协作编辑</td><td class="no">--</td><td class="no">--</td><td class="check">✓</td><td class="no">--</td></tr>
+
+            <tr><td class="cat">KNOWLEDGE GRAPH</td><td></td><td></td><td></td><td></td></tr>
+            <tr><td class="row-label">图谱查看</td><td class="check">✓</td><td class="check">✓</td><td class="check">✓</td><td class="check">✓</td></tr>
+            <tr><td class="row-label">节点注解</td><td class="no">--</td><td class="check">✓</td><td class="check">✓</td><td class="no">--</td></tr>
+            <tr><td class="row-label">结构化 JSON</td><td class="no">--</td><td class="no">--</td><td class="no">--</td><td class="check">✓</td></tr>
+
+            <tr><td class="cat">ANALYTICS</td><td></td><td></td><td></td><td></td></tr>
+            <tr><td class="row-label">基础仪表盘</td><td class="check">✓</td><td class="check">✓</td><td class="check">✓</td><td class="no">--</td></tr>
+            <tr><td class="row-label">深度诊断报告</td><td class="limit-val">3/月</td><td class="check">∞</td><td class="check">∞</td><td class="check">✓</td></tr>
+            <tr><td class="row-label">导出 PDF/CSV</td><td class="no">--</td><td class="check">✓</td><td class="check">✓</td><td class="check">✓</td></tr>
+            <tr><td class="row-label">团队聚合报告</td><td class="no">--</td><td class="no">--</td><td class="check">✓</td><td class="check">✓</td></tr>
+
+            <tr><td class="cat">AI REVIEW</td><td></td><td></td><td></td><td></td></tr>
+            <tr><td class="row-label">AI 自动审核</td><td class="no">--</td><td class="check">✓</td><td class="check">✓</td><td class="no">--</td></tr>
+            <tr><td class="row-label">审核优先队列</td><td class="no">--</td><td class="check">✓</td><td class="check">✓</td><td class="no">--</td></tr>
+            <tr><td class="row-label">置信度阈值</td><td class="no">--</td><td class="check">可调</td><td class="check">可调</td><td class="no">--</td></tr>
+
+            <tr><td class="cat">METHODS</td><td></td><td></td><td></td><td></td></tr>
+            <tr><td class="row-label">方法查看</td><td class="check">✓</td><td class="check">✓</td><td class="check">✓</td><td class="check">✓</td></tr>
+            <tr><td class="row-label">创建自定义方法</td><td class="no">--</td><td class="check">✓</td><td class="check">✓</td><td class="no">--</td></tr>
+            <tr><td class="row-label">解题路径数据</td><td class="no">--</td><td class="no">--</td><td class="no">--</td><td class="check">✓</td></tr>
+
+            <tr><td class="cat">DATA SERVICES</td><td></td><td></td><td></td><td></td></tr>
+            <tr><td class="row-label">RESTful API</td><td class="no">--</td><td class="no">--</td><td class="no">--</td><td class="check">✓</td></tr>
+            <tr><td class="row-label">脱敏数据包</td><td class="no">--</td><td class="no">--</td><td class="no">--</td><td class="check">✓</td></tr>
+            <tr><td class="row-label">定制数据服务</td><td class="no">--</td><td class="no">--</td><td class="no">--</td><td class="check">✓</td></tr>
+            <tr><td class="row-label">SLA 保障</td><td class="no">--</td><td class="no">--</td><td class="limit-val">24h</td><td class="check">99.5%</td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <!-- FAQ -->
+      <div class="faq-section">
+        <h3>FAQ</h3>
+        <div class="faq-item" onclick="this.classList.toggle('open')">
+          <div class="faq-q">免费版有什么限制？<span class="faq-toggle">+</span></div>
+          <div class="faq-a">免费版可浏览题库（10题/日）、查看知识图谱、基础仪表盘、3次/月深度分析、Blog完整访问。核心浏览功能无期限限制。升级 Pro 可解锁无限使用和 AI 审核。</div>
+        </div>
+        <div class="faq-item" onclick="this.classList.toggle('open')">
+          <div class="faq-q">为什么只面向教师收费？<span class="faq-toggle">+</span></div>
+          <div class="faq-a">shuxue.icu 定位为教研工具平台，不是学科培训机构。双减政策禁止面向 K-12 学生的学科类收费培训。我们为教师提供备课、命题、学情分析工具，完全合规。</div>
+        </div>
+        <div class="faq-item" onclick="this.classList.toggle('open')">
+          <div class="faq-q">Team 版座席如何增购？<span class="faq-toggle">+</span></div>
+          <div class="faq-a">Team 版默认 5 座席。超出部分按 ¥39/座席/月增购，上限 20 座席。超过 20 座席建议联系商务定制 Enterprise 方案。</div>
+        </div>
+        <div class="faq-item" onclick="this.classList.toggle('open')">
+          <div class="faq-q">API 数据如何保证隐私合规？<span class="faq-toggle">+</span></div>
+          <div class="faq-a">所有 API 输出数据经三层脱敏：1) 学生姓名→匿名ID；2) 具体成绩→等级(A/B/C)；3) 班级信息→聚合统计。原始可识别数据不出库。API 许可协议禁止逆向提取和再授权。</div>
+        </div>
+        <div class="faq-item" onclick="this.classList.toggle('open')">
+          <div class="faq-q">年付折扣如何计算？<span class="faq-toggle">+</span></div>
+          <div class="faq-a">年付 = 月价 × 10（免2个月），相当于 17% 折扣。Pro 年付 ¥490（原 ¥588），Team 年付 ¥1,990（原 ¥2,388）。年付中途可退款（按已使用月份扣减）。</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ===== 关于我们（博客 + 关于） ===== -->
+    <div class="page" id="page-about">
+      <!-- 子导航条 -->
+      <div class="sub-nav" id="about-subnav">
+        <button class="sub-nav-btn active" data-sub="blog">博客</button>
+        <button class="sub-nav-btn" data-sub="aboutinfo">关于</button>
+      </div>
+
+      <!-- 博客子页 -->
+      <div class="sub-page active" id="sub-blog">
+        <div class="blog-header">
+          <h2>BLOG · ARTICLE ARCHIVE</h2>
+          <div class="blog-filter-bar">
+            <div class="filter-group">
+              <label class="filter-label">TAG</label>
+              <select id="blog-tag-filter" class="filter-select">
+                <option value="">ALL</option>
+              </select>
+            </div>
+            <div class="filter-group">
+              <label class="filter-label">CAT</label>
+              <select id="blog-cat-filter" class="filter-select">
+                <option value="">ALL</option>
+              </select>
+            </div>
+            <div class="blog-stats-strip">
+              <span id="blog-count">8</span> ARTICLES
+            </div>
+          </div>
+        </div>
+        <div id="blog-list" class="blog-list"></div>
+        <div id="blog-detail" class="blog-detail" style="display:none;"></div>
+      </div>
+
+      <!-- 关于子页 -->
+      <div class="sub-page" id="sub-aboutinfo">
+        <div class="about-header">
+          <h2>ABOUT · shuxue.icu</h2>
+        </div>
+        <div class="about-content">
+          <div class="about-section">
+            <h3>01 · PLATFORM</h3>
+            <p>shuxue.icu 是高考数学教研工作流平台，集题库管理、方法库、自动入库管线、数据分析于一体。</p>
+            <div class="about-tags">
+              <span class="tag">QUESTION BANK</span>
+              <span class="tag">METHOD LIB</span>
+              <span class="tag">AI INGEST</span>
+              <span class="tag">ANALYTICS</span>
+              <span class="tag">BLOG</span>
+            </div>
+          </div>
+          <div class="about-section">
+            <h3>02 · DESIGN SYSTEM</h3>
+            <p>黑底白字 / 无图标 / 无圆角 / 无阴影 / 中英混排 / 几何无衬线字体 / 三主题切换</p>
+            <div id="theme-switcher" class="theme-switcher"></div>
+            <div class="about-spec-grid">
+              <div class="spec-item">
+                <span class="spec-key">ACCENT</span>
+                <span class="spec-val" id="spec-accent-val">#B91C1C</span>
+              </div>
+              <div class="spec-item">
+                <span class="spec-key">BG</span>
+                <span class="spec-val">#0a0a0a · #111111 · #1a1a1a</span>
+              </div>
+              <div class="spec-item">
+                <span class="spec-key">FONT</span>
+                <span class="spec-val">Space Grotesk, sans-serif</span>
+              </div>
+              <div class="spec-item">
+                <span class="spec-key">BRAND</span>
+                <span class="spec-val">shuxue.icu</span>
+              </div>
+            </div>
+          </div>
+          <div class="about-section">
+            <h3>03 · AUTHOR</h3>
+            <p>李文金 — 高考数学教研专家，致力于用技术手段优化教学流程，建立结构化知识体系。</p>
+            <div class="about-tags">
+              <span class="tag">MATH EDUCATION</span>
+              <span class="tag">FRONTEND DEV</span>
+              <span class="tag">DATA STRUCTURE</span>
+            </div>
+          </div>
+          <div class="about-section">
+            <h3>04 · TECH STACK</h3>
+            <p>前端：纯 HTML/CSS/JS + KaTeX + ECharts / 后端：Python Flask + LLM / 数据：JS schema + JSON Schema</p>
+          </div>
+        </div>
+      </div>
+    </div>
+
+  </main>
+
+  <!-- 页脚 -->
+  <footer class="footer">
+    <p>shuxue.icu · MATH RESEARCH PLATFORM · POWERED BY LI WENJIN</p>
+  </footer>
+
+  <script src="js/themes.js"></script>
+  <script src="js/data.js"></script>
+  <script src="js/charts.js"></script>
+  <script src="js/app.js"></script>
+</body>
+</html>

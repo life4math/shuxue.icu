@@ -1,0 +1,6 @@
+{
+  "openai_api_key": "YOUR_API_KEY_HERE",
+  "openai_api_base": "https://api.openai.com/v1",
+  "model": "gpt-4o",
+  "max_chunk_chars": 2000
+}

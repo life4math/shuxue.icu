@@ -1,0 +1,853 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1.0">
+<title>PRICING · shuxue.icu</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="css/style.css">
+<style>
+/* --- Pricing Page Specific Styles --- */
+.pricing-hero {
+  text-align: center;
+  padding: 80px 24px 48px;
+}
+.pricing-hero h2 {
+  font-family: var(--font-display);
+  font-size: 32px;
+  font-weight: 700;
+  letter-spacing: .02em;
+  color: var(--tx-1);
+  margin-bottom: 12px;
+}
+.pricing-hero p {
+  font-family: var(--font-body);
+  font-size: 14px;
+  color: var(--tx-2);
+  letter-spacing: .04em;
+  max-width: 480px;
+  margin: 0 auto;
+}
+
+/* --- Tier Tabs (切换月付/年付) --- */
+.tier-toggle {
+  display: flex;
+  justify-content: center;
+  gap: 0;
+  margin: 32px auto 0;
+}
+.tier-toggle button {
+  font-family: var(--font-display);
+  font-size: 12px;
+  font-weight: 500;
+  letter-spacing: .08em;
+  padding: 10px 28px;
+  border: 1px solid var(--line);
+  background: transparent;
+  color: var(--tx-2);
+  cursor: pointer;
+  transition: var(--transition);
+}
+.tier-toggle button.active {
+  background: var(--accent);
+  color: var(--bg-0);
+  border-color: var(--accent);
+}
+.tier-toggle button:first-child { border-right: none; }
+
+/* --- Pricing Cards Grid --- */
+.pricing-grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 16px;
+  max-width: 960px;
+  margin: 48px auto 0;
+  padding: 0 24px;
+}
+.pricing-card {
+  background: var(--bg-1);
+  border: 1px solid var(--line);
+  padding: 32px 24px;
+  position: relative;
+  transition: var(--transition);
+}
+.pricing-card:hover {
+  border-color: var(--line-strong);
+  background: var(--bg-2);
+}
+.pricing-card.featured {
+  border-color: var(--accent);
+  background: var(--bg-2);
+}
+.pricing-card.featured::before {
+  content: "RECOMMENDED";
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  font-family: var(--font-display);
+  font-size: 9px;
+  font-weight: 600;
+  letter-spacing: .12em;
+  color: var(--bg-0);
+  background: var(--accent);
+  text-align: center;
+  padding: 6px 0;
+}
+.pricing-card .tier-name {
+  font-family: var(--font-display);
+  font-size: 13px;
+  font-weight: 600;
+  letter-spacing: .1em;
+  color: var(--tx-3);
+  margin-bottom: 8px;
+}
+.pricing-card .tier-label {
+  font-family: var(--font-display);
+  font-size: 18px;
+  font-weight: 700;
+  letter-spacing: .02em;
+  color: var(--tx-1);
+  margin-bottom: 4px;
+}
+.pricing-card .tier-desc {
+  font-family: var(--font-body);
+  font-size: 12px;
+  color: var(--tx-2);
+  letter-spacing: .02em;
+  margin-bottom: 24px;
+  line-height: 1.5;
+}
+.pricing-card .tier-price {
+  font-family: var(--font-display);
+  font-size: 28px;
+  font-weight: 700;
+  color: var(--tx-1);
+  margin-bottom: 2px;
+}
+.pricing-card .tier-price .currency {
+  font-size: 16px;
+  font-weight: 500;
+  vertical-align: top;
+  margin-right: 2px;
+}
+.pricing-card .tier-price .period {
+  font-size: 13px;
+  font-weight: 400;
+  color: var(--tx-3);
+  margin-left: 4px;
+}
+.pricing-card .tier-unit {
+  font-family: var(--font-display);
+  font-size: 11px;
+  color: var(--tx-3);
+  letter-spacing: .04em;
+  margin-bottom: 24px;
+}
+.pricing-card .tier-cta {
+  display: block;
+  width: 100%;
+  font-family: var(--font-display);
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: .08em;
+  padding: 12px 0;
+  border: 1px solid var(--line);
+  background: transparent;
+  color: var(--tx-1);
+  cursor: pointer;
+  text-align: center;
+  transition: var(--transition);
+  margin-bottom: 24px;
+}
+.pricing-card .tier-cta:hover {
+  background: var(--accent);
+  color: var(--bg-0);
+  border-color: var(--accent);
+}
+.pricing-card.featured .tier-cta {
+  background: var(--accent);
+  color: var(--bg-0);
+  border-color: var(--accent);
+}
+.pricing-card.featured .tier-cta:hover {
+  background: transparent;
+  color: var(--tx-1);
+  border-color: var(--accent);
+}
+.pricing-card .feature-list {
+  list-style: none;
+  padding: 0;
+}
+.pricing-card .feature-list li {
+  font-family: var(--font-body);
+  font-size: 12px;
+  color: var(--tx-2);
+  letter-spacing: .02em;
+  padding: 6px 0;
+  border-bottom: 1px solid var(--line-dash);
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+}
+.pricing-card .feature-list li:last-child { border-bottom: none; }
+.pricing-card .feature-list li .feat-key {
+  font-weight: 500;
+  color: var(--tx-1);
+  min-width: 72px;
+}
+.pricing-card .feature-list li .feat-val {
+  color: var(--tx-2);
+}
+.pricing-card .feature-list li .feat-val.limit {
+  color: var(--tx-3);
+}
+.pricing-card .feature-list li .feat-val.unlimited {
+  color: var(--accent);
+}
+
+/* --- Feature Matrix --- */
+.matrix-section {
+  max-width: 960px;
+  margin: 64px auto 0;
+  padding: 0 24px;
+}
+.matrix-section h3 {
+  font-family: var(--font-display);
+  font-size: 13px;
+  font-weight: 600;
+  letter-spacing: .08em;
+  color: var(--tx-3);
+  margin-bottom: 24px;
+}
+.matrix-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-family: var(--font-body);
+  font-size: 12px;
+}
+.matrix-table th {
+  font-family: var(--font-display);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: .08em;
+  color: var(--tx-3);
+  padding: 10px 12px;
+  border-bottom: 1px solid var(--line-strong);
+  text-align: left;
+}
+.matrix-table th.col-free { color: var(--tx-3); }
+.matrix-table th.col-pro { color: var(--tx-1); }
+.matrix-table th.col-team { color: var(--tx-1); }
+.matrix-table th.col-api { color: var(--tx-2); }
+.matrix-table td {
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--line);
+  color: var(--tx-2);
+}
+.matrix-table td.cat {
+  font-family: var(--font-display);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: .06em;
+  color: var(--tx-3);
+  border-bottom: 1px solid var(--line-strong);
+  padding-top: 16px;
+}
+.matrix-table td.row-label {
+  color: var(--tx-1);
+  font-weight: 500;
+}
+.matrix-table td.check {
+  color: var(--accent);
+  text-align: center;
+  font-weight: 700;
+}
+.matrix-table td.no {
+  color: var(--tx-3);
+  text-align: center;
+}
+.matrix-table td.limit-val {
+  color: var(--tx-3);
+  text-align: center;
+}
+
+/* --- Revenue Projection --- */
+.revenue-section {
+  max-width: 960px;
+  margin: 64px auto 0;
+  padding: 0 24px;
+}
+.revenue-section h3 {
+  font-family: var(--font-display);
+  font-size: 13px;
+  font-weight: 600;
+  letter-spacing: .08em;
+  color: var(--tx-3);
+  margin-bottom: 24px;
+}
+.revenue-grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 16px;
+}
+.revenue-card {
+  background: var(--bg-1);
+  border: 1px solid var(--line);
+  padding: 24px 20px;
+}
+.revenue-card .rev-phase {
+  font-family: var(--font-display);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: .1em;
+  color: var(--tx-3);
+  margin-bottom: 4px;
+}
+.revenue-card .rev-month {
+  font-family: var(--font-display);
+  font-size: 12px;
+  color: var(--tx-2);
+  margin-bottom: 16px;
+}
+.revenue-card .rev-num {
+  font-family: var(--font-display);
+  font-size: 24px;
+  font-weight: 700;
+  color: var(--tx-1);
+  margin-bottom: 2px;
+}
+.revenue-card .rev-num .rev-unit {
+  font-size: 13px;
+  font-weight: 400;
+  color: var(--tx-2);
+  margin-left: 4px;
+}
+.revenue-card .rev-breakdown {
+  font-family: var(--font-body);
+  font-size: 11px;
+  color: var(--tx-3);
+  line-height: 1.8;
+  letter-spacing: .02em;
+}
+.revenue-card .rev-status {
+  font-family: var(--font-display);
+  font-size: 11px;
+  font-weight: 500;
+  letter-spacing: .06em;
+  color: var(--tx-3);
+  margin-top: 12px;
+  padding-top: 8px;
+  border-top: 1px solid var(--line);
+}
+
+/* --- ADE Logic --- */
+.ade-section {
+  max-width: 960px;
+  margin: 64px auto 0;
+  padding: 0 24px;
+}
+.ade-section h3 {
+  font-family: var(--font-display);
+  font-size: 13px;
+  font-weight: 600;
+  letter-spacing: .08em;
+  color: var(--tx-3);
+  margin-bottom: 24px;
+}
+.ade-flow {
+  display: grid;
+  grid-template-columns: 1fr auto 1fr auto 1fr;
+  gap: 0;
+  align-items: center;
+}
+.ade-block {
+  background: var(--bg-1);
+  border: 1px solid var(--line);
+  padding: 24px 20px;
+  text-align: center;
+}
+.ade-block .ade-letter {
+  font-family: var(--font-display);
+  font-size: 32px;
+  font-weight: 700;
+  color: var(--tx-1);
+  margin-bottom: 4px;
+}
+.ade-block .ade-name {
+  font-family: var(--font-display);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: .08em;
+  color: var(--tx-3);
+  margin-bottom: 8px;
+}
+.ade-block .ade-role {
+  font-family: var(--font-body);
+  font-size: 12px;
+  color: var(--tx-2);
+  line-height: 1.5;
+}
+.ade-arrow {
+  font-family: var(--font-display);
+  font-size: 20px;
+  color: var(--tx-3);
+  padding: 0 12px;
+}
+
+/* --- Compliance Checklist --- */
+.compliance-section {
+  max-width: 960px;
+  margin: 64px auto 0;
+  padding: 0 24px;
+}
+.compliance-section h3 {
+  font-family: var(--font-display);
+  font-size: 13px;
+  font-weight: 600;
+  letter-spacing: .08em;
+  color: var(--tx-3);
+  margin-bottom: 24px;
+}
+.compliance-list {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 12px;
+}
+.compliance-item {
+  background: var(--bg-1);
+  border: 1px solid var(--line);
+  padding: 16px 20px;
+  display: flex;
+  align-items: baseline;
+  gap: 12px;
+}
+.compliance-item .comp-icon {
+  font-family: var(--font-display);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: .04em;
+  color: var(--accent);
+  min-width: 24px;
+}
+.compliance-item .comp-text {
+  font-family: var(--font-body);
+  font-size: 12px;
+  color: var(--tx-2);
+  line-height: 1.5;
+}
+.compliance-item .comp-text strong {
+  color: var(--tx-1);
+  font-weight: 500;
+}
+
+/* --- FAQ --- */
+.faq-section {
+  max-width: 960px;
+  margin: 64px auto 0;
+  padding: 0 24px 80px;
+}
+.faq-section h3 {
+  font-family: var(--font-display);
+  font-size: 13px;
+  font-weight: 600;
+  letter-spacing: .08em;
+  color: var(--tx-3);
+  margin-bottom: 24px;
+}
+.faq-item {
+  border-bottom: 1px solid var(--line);
+  padding: 16px 0;
+}
+.faq-item .faq-q {
+  font-family: var(--font-display);
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--tx-1);
+  letter-spacing: .02em;
+  cursor: pointer;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+.faq-item .faq-q .faq-toggle {
+  font-size: 11px;
+  color: var(--tx-3);
+  transition: var(--transition);
+}
+.faq-item.open .faq-q .faq-toggle { transform: rotate(45deg); }
+.faq-item .faq-a {
+  font-family: var(--font-body);
+  font-size: 12px;
+  color: var(--tx-2);
+  line-height: 1.8;
+  max-height: 0;
+  overflow: hidden;
+  transition: max-height .3s ease;
+}
+.faq-item.open .faq-a {
+  max-height: 300px;
+  margin-top: 12px;
+}
+
+/* --- Footer --- */
+.pricing-footer {
+  text-align: center;
+  padding: 32px 24px;
+  border-top: 1px solid var(--line);
+}
+.pricing-footer p {
+  font-family: var(--font-display);
+  font-size: 11px;
+  color: var(--tx-3);
+  letter-spacing: .06em;
+}
+</style>
+</head>
+<body>
+
+<!-- Navbar -->
+<nav class="navbar">
+  <div class="nav-brand">
+    <div class="nav-title">
+      <h1>shuxue<span class="proto">.icu</span></h1>
+    </div>
+    <span class="nav-subtitle">MATH RESEARCH PLATFORM</span>
+  </div>
+  <a href="index.html" style="font-family:var(--font-display);font-size:12px;font-weight:500;letter-spacing:.08em;color:var(--tx-2);border:1px solid var(--line);padding:8px 16px;text-decoration:none;transition:var(--transition)">BACK TO APP</a>
+</nav>
+
+<!-- Hero -->
+<section class="pricing-hero">
+  <h2>PRICING</h2>
+  <p>教研工具平台 · 不面向学生 · 数据驱动教学 · 合规运营</p>
+</section>
+
+<!-- Toggle -->
+<div class="tier-toggle">
+  <button class="active" onclick="switchBilling('monthly')">MONTHLY</button>
+  <button onclick="switchBilling('yearly')">YEARLY · SAVE 17%</button>
+</div>
+
+<!-- Pricing Cards -->
+<div class="pricing-grid">
+  <!-- FREE -->
+  <div class="pricing-card">
+    <div class="tier-name">TIER 01</div>
+    <div class="tier-label">FREE</div>
+    <div class="tier-desc">教研入门 · 零成本体验核心功能</div>
+    <div class="tier-price"><span class="currency">¥</span>0<span class="period">/月</span></div>
+    <div class="tier-unit">永久免费 · 无需付费</div>
+    <button class="tier-cta" onclick="showToast('免费版无需注册，直接使用')">START FREE</button>
+    <ul class="feature-list">
+      <li><span class="feat-key">题库浏览</span><span class="feat-val">10 题/日</span></li>
+      <li><span class="feat-key">知识图谱</span><span class="feat-val">仅查看</span></li>
+      <li><span class="feat-key">学情分析</span><span class="feat-val limit">3 次/月</span></li>
+      <li><span class="feat-key">AI 审核</span><span class="feat-val limit">--</span></li>
+      <li><span class="feat-key">方法模板</span><span class="feat-val">仅查看</span></li>
+      <li><span class="feat-key">文件上传</span><span class="feat-val">1 次/日</span></li>
+      <li><span class="feat-key">数据导出</span><span class="feat-val limit">--</span></li>
+      <li><span class="feat-key">Blog</span><span class="feat-val unlimited">完整访问</span></li>
+    </ul>
+  </div>
+
+  <!-- PRO (Featured) -->
+  <div class="pricing-card featured">
+    <div class="tier-name">TIER 02</div>
+    <div class="tier-label">PRO</div>
+    <div class="tier-desc">个人教师 · 全功能解锁 · AI 驱动教研</div>
+    <div class="tier-price"><span class="currency">¥</span><span id="pro-price">49</span><span class="period" id="pro-period">/月</span></div>
+    <div class="tier-unit" id="pro-unit">单座席 · 按月计费</div>
+    <button class="tier-cta" onclick="showToast('Pro 版即将开放注册')">GET PRO</button>
+    <ul class="feature-list">
+      <li><span class="feat-key">题库浏览</span><span class="feat-val unlimited">无限</span></li>
+      <li><span class="feat-key">知识图谱</span><span class="feat-val">查看 + 注解</span></li>
+      <li><span class="feat-key">学情分析</span><span class="feat-val unlimited">无限 + PDF</span></li>
+      <li><span class="feat-key">AI 审核</span><span class="feat-val unlimited">无限 · 优先队列</span></li>
+      <li><span class="feat-key">方法模板</span><span class="feat-val">查看 + 创建</span></li>
+      <li><span class="feat-key">文件上传</span><span class="feat-val">批量 · 10 次/日</span></li>
+      <li><span class="feat-key">数据导出</span><span class="feat-val">CSV + PDF</span></li>
+      <li><span class="feat-key">Blog</span><span class="feat-val">完整 + 草稿</span></li>
+    </ul>
+  </div>
+
+  <!-- TEAM -->
+  <div class="pricing-card">
+    <div class="tier-name">TIER 03</div>
+    <div class="tier-label">TEAM</div>
+    <div class="tier-desc">教研组协作 · 共享题库 · 统一管理</div>
+    <div class="tier-price"><span class="currency">¥</span><span id="team-price">199</span><span class="period" id="team-period">/月</span></div>
+    <div class="tier-unit" id="team-unit">5 座席 · 含管理后台</div>
+    <button class="tier-cta" onclick="showToast('Team 版即将开放注册')">GET TEAM</button>
+    <ul class="feature-list">
+      <li><span class="feat-key">Pro 全功能</span><span class="feat-val unlimited">包含</span></li>
+      <li><span class="feat-key">共享题库</span><span class="feat-val">组内协作编辑</span></li>
+      <li><span class="feat-key">组级分析</span><span class="feat-val">团队仪表盘</span></li>
+      <li><span class="feat-key">方法共享</span><span class="feat-val">组模板流通</span></li>
+      <li><span class="feat-key">座席管理</span><span class="feat-val">5-20 增购 ¥39/席</span></li>
+      <li><span class="feat-key">优先支持</span><span class="feat-val unlimited">24h 响应</span></li>
+      <li><span class="feat-key">私有部署</span><span class="feat-val limit">--</span></li>
+    </ul>
+  </div>
+
+  <!-- API -->
+  <div class="pricing-card">
+    <div class="tier-name">TIER 04</div>
+    <div class="tier-label">API</div>
+    <div class="tier-desc">结构化数据服务 · 教研数据接口</div>
+    <div class="tier-price"><span class="currency">¥</span>500<span class="period">/月起</span></div>
+    <div class="tier-unit">按调用量计费 · ¥0.01/次</div>
+    <button class="tier-cta" onclick="showToast('API 服务需申请审核')">REQUEST ACCESS</button>
+    <ul class="feature-list">
+      <li><span class="feat-key">题库查询</span><span class="feat-val">RESTful API</span></li>
+      <li><span class="feat-key">知识图谱</span><span class="feat-val">结构化 JSON</span></li>
+      <li><span class="feat-key">解题路径</span><span class="feat-val">步骤化数据</span></li>
+      <li><span class="feat-key">学情报告</span><span class="feat-val">脱敏聚合数据</span></li>
+      <li><span class="feat-key">数据包</span><span class="feat-val">¥2K-10K/主题域</span></li>
+      <li><span class="feat-key">SLA</span><span class="feat-val">99.5% 可用性</span></li>
+      <li><span class="feat-key">定制服务</span><span class="feat-val">¥20K+ 项目制</span></li>
+    </ul>
+  </div>
+</div>
+
+<!-- ADE Synergy -->
+<section class="ade-section">
+  <h3>ADE MODEL · SYNERGY</h3>
+  <div class="ade-flow">
+    <div class="ade-block">
+      <div class="ade-letter">D</div>
+      <div class="ade-name">FREEMIUM</div>
+      <div class="ade-role">零门槛获客<br>免费层吸引教师<br>行为数据沉淀资产</div>
+    </div>
+    <div class="ade-arrow">→</div>
+    <div class="ade-block">
+      <div class="ade-letter">A</div>
+      <div class="ade-name">SAAS</div>
+      <div class="ade-role">订阅转化核心<br>Pro/Team 月付<br>稳定现金流引擎</div>
+    </div>
+    <div class="ade-arrow">→</div>
+    <div class="ade-block">
+      <div class="ade-letter">E</div>
+      <div class="ade-name">DATA API</div>
+      <div class="ade-role">数据变现上层<br>脱敏结构化数据<br>高客单价利润池</div>
+    </div>
+  </div>
+</section>
+
+<!-- Feature Matrix -->
+<section class="matrix-section">
+  <h3>FEATURE MATRIX</h3>
+  <table class="matrix-table">
+    <thead>
+      <tr>
+        <th style="width:22%">FEATURE</th>
+        <th class="col-free" style="width:19%">FREE</th>
+        <th class="col-pro" style="width:19%">PRO</th>
+        <th class="col-team" style="width:19%">TEAM</th>
+        <th class="col-api" style="width:21%">API</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr><td class="cat">QUESTION BANK</td><td></td><td></td><td></td><td></td></tr>
+      <tr><td class="row-label">题库浏览</td><td class="limit-val">10/日</td><td class="check">∞</td><td class="check">∞</td><td class="check">∞</td></tr>
+      <tr><td class="row-label">题目创建</td><td class="no">--</td><td class="check">✓</td><td class="check">✓</td><td class="no">--</td></tr>
+      <tr><td class="row-label">批量上传</td><td class="limit-val">1/日</td><td class="limit-val">10/日</td><td class="check">∞</td><td class="no">--</td></tr>
+      <tr><td class="row-label">协作编辑</td><td class="no">--</td><td class="no">--</td><td class="check">✓</td><td class="no">--</td></tr>
+
+      <tr><td class="cat">KNOWLEDGE GRAPH</td><td></td><td></td><td></td><td></td></tr>
+      <tr><td class="row-label">图谱查看</td><td class="check">✓</td><td class="check">✓</td><td class="check">✓</td><td class="check">✓</td></tr>
+      <tr><td class="row-label">节点注解</td><td class="no">--</td><td class="check">✓</td><td class="check">✓</td><td class="no">--</td></tr>
+      <tr><td class="row-label">结构化 JSON</td><td class="no">--</td><td class="no">--</td><td class="no">--</td><td class="check">✓</td></tr>
+
+      <tr><td class="cat">ANALYTICS</td><td></td><td></td><td></td><td></td></tr>
+      <tr><td class="row-label">基础仪表盘</td><td class="check">✓</td><td class="check">✓</td><td class="check">✓</td><td class="no">--</td></tr>
+      <tr><td class="row-label">深度诊断报告</td><td class="limit-val">3/月</td><td class="check">∞</td><td class="check">∞</td><td class="check">✓</td></tr>
+      <tr><td class="row-label">导出 PDF/CSV</td><td class="no">--</td><td class="check">✓</td><td class="check">✓</td><td class="check">✓</td></tr>
+      <tr><td class="row-label">团队聚合报告</td><td class="no">--</td><td class="no">--</td><td class="check">✓</td><td class="check">✓</td></tr>
+
+      <tr><td class="cat">AI REVIEW</td><td></td><td></td><td></td><td></td></tr>
+      <tr><td class="row-label">AI 自动审核</td><td class="no">--</td><td class="check">✓</td><td class="check">✓</td><td class="no">--</td></tr>
+      <tr><td class="row-label">审核优先队列</td><td class="no">--</td><td class="check">✓</td><td class="check">✓</td><td class="no">--</td></tr>
+      <tr><td class="row-label">置信度阈值</td><td class="no">--</td><td class="check">可调</td><td class="check">可调</td><td class="no">--</td></tr>
+
+      <tr><td class="cat">METHODS</td><td></td><td></td><td></td><td></td></tr>
+      <tr><td class="row-label">方法查看</td><td class="check">✓</td><td class="check">✓</td><td class="check">✓</td><td class="check">✓</td></tr>
+      <tr><td class="row-label">创建自定义方法</td><td class="no">--</td><td class="check">✓</td><td class="check">✓</td><td class="no">--</td></tr>
+      <tr><td class="row-label">解题路径数据</td><td class="no">--</td><td class="no">--</td><td class="no">--</td><td class="check">✓</td></tr>
+
+      <tr><td class="cat">DATA SERVICES</td><td></td><td></td><td></td><td></td></tr>
+      <tr><td class="row-label">RESTful API</td><td class="no">--</td><td class="no">--</td><td class="no">--</td><td class="check">✓</td></tr>
+      <tr><td class="row-label">脱敏数据包</td><td class="no">--</td><td class="no">--</td><td class="no">--</td><td class="check">✓</td></tr>
+      <tr><td class="row-label">定制数据服务</td><td class="no">--</td><td class="no">--</td><td class="no">--</td><td class="check">✓</td></tr>
+      <tr><td class="row-label">SLA 保障</td><td class="no">--</td><td class="no">--</td><td class="limit-val">24h</td><td class="check">99.5%</td></tr>
+    </tbody>
+  </table>
+</section>
+
+<!-- Revenue Projection -->
+<section class="revenue-section">
+  <h3>REVENUE PROJECTION · ADE COMBINED</h3>
+  <div class="revenue-grid">
+    <div class="revenue-card">
+      <div class="rev-phase">PHASE 1</div>
+      <div class="rev-month">M6 · 启动期</div>
+      <div class="rev-num">8<span class="rev-unit">K/月</span></div>
+      <div class="rev-breakdown">
+        D 免费用户 500+<br>
+        A Pro 30 × ¥49 = ¥1.5K<br>
+        A Team 2 × ¥199 = ¥0.4K<br>
+        E API ¥500 × 2 = ¥1K<br>
+        + 教研数据包 ¥5K
+      </div>
+      <div class="rev-status">投入期 · 未盈利</div>
+    </div>
+    <div class="revenue-card">
+      <div class="rev-phase">PHASE 2</div>
+      <div class="rev-month">M12 · 转化期</div>
+      <div class="rev-num">35<span class="rev-unit">K/月</span></div>
+      <div class="rev-breakdown">
+        D 免费用户 2K+<br>
+        A Pro 200 × ¥49 = ¥10K<br>
+        A Team 10 × ¥199 = ¥2K<br>
+        E API ¥500 × 8 = ¥4K<br>
+        + 数据包 ¥15K + 定制 ¥4K
+      </div>
+      <div class="rev-status">接近盈亏平衡</div>
+    </div>
+    <div class="revenue-card">
+      <div class="rev-phase">PHASE 3</div>
+      <div class="rev-month">M18 · 增长期</div>
+      <div class="rev-num">120<span class="rev-unit">K/月</span></div>
+      <div class="rev-breakdown">
+        D 免费用户 5K+<br>
+        A Pro 600 × ¥49 = ¥30K<br>
+        A Team 30 × ¥199 = ¥6K<br>
+        E 标准 ¥500 × 20 = ¥10K<br>
+        + 数据包 ¥50K + 定制 ¥24K
+      </div>
+      <div class="rev-status">稳步盈利</div>
+    </div>
+    <div class="revenue-card">
+      <div class="rev-phase">PHASE 4</div>
+      <div class="rev-month">M30 · 成熟期</div>
+      <div class="rev-num">500<span class="rev-unit">K/月</span></div>
+      <div class="rev-breakdown">
+        D 免费用户 15K+<br>
+        A Pro 2K × ¥49 = ¥100K<br>
+        A Team 80 × ¥199 = ¥16K<br>
+        E 标准 ¥500 × 50 = ¥25K<br>
+        + 数据包 ¥200K + 定制 ¥159K
+      </div>
+      <div class="rev-status">规模化盈利</div>
+    </div>
+  </div>
+</section>
+
+<!-- Compliance -->
+<section class="compliance-section">
+  <h3>COMPLIANCE · REGULATORY CHECKLIST</h3>
+  <div class="compliance-list">
+    <div class="compliance-item">
+      <span class="comp-icon">01</span>
+      <span class="comp-text"><strong>收费对象仅限教师/学校/研究者</strong>，不面向 K-12 学生。平台定位为教研工具，非学科培训机构。</span>
+    </div>
+    <div class="compliance-item">
+      <span class="comp-icon">02</span>
+      <span class="comp-text"><strong>双减政策合规</strong>：不提供学科辅导、不组织线上直播课、不在节假日开展培训活动。</span>
+    </div>
+    <div class="compliance-item">
+      <span class="comp-icon">03</span>
+      <span class="comp-text"><strong>数据脱敏</strong>：API 层所有数据经脱敏处理（姓名→ID、成绩→等级），禁止暴露可识别个人信息。</span>
+    </div>
+    <div class="compliance-item">
+      <span class="comp-icon">04</span>
+      <span class="comp-text"><strong>个人信息保护法</strong>：用户数据收集需明示同意，支持数据删除请求，跨境传输需安全评估。</span>
+    </div>
+    <div class="compliance-item">
+      <span class="comp-icon">05</span>
+      <span class="comp-text"><strong>API 许可协议</strong>：明确禁止再贩卖、AI 训练重授权、隐私数据逆向提取。</span>
+    </div>
+    <div class="compliance-item">
+      <span class="comp-icon">06</span>
+      <span class="comp-text"><strong>经营资质</strong>：需取得 ICP 许可证、教育信息服务备案、数据安全合规认证。</span>
+    </div>
+    <div class="compliance-item">
+      <span class="comp-icon">07</span>
+      <span class="comp-text"><strong>定价透明</strong>：月付/年付价格明示，无隐藏收费，7天无理由退款。</span>
+    </div>
+    <div class="compliance-item">
+      <span class="comp-icon">08</span>
+      <span class="comp-text"><strong>免费层永久可用</strong>：核心浏览功能不设期限限制，免费层不作降级处理。</span>
+    </div>
+  </div>
+</section>
+
+<!-- FAQ -->
+<section class="faq-section">
+  <h3>FAQ</h3>
+  <div class="faq-item" onclick="this.classList.toggle('open')">
+    <div class="faq-q">免费版有什么限制？<span class="faq-toggle">+</span></div>
+    <div class="faq-a">免费版可浏览题库（10题/日）、查看知识图谱、基础仪表盘、3次/月深度分析、Blog完整访问。核心浏览功能无期限限制。升级 Pro 可解锁无限使用和 AI 审核。</div>
+  </div>
+  <div class="faq-item" onclick="this.classList.toggle('open')">
+    <div class="faq-q">为什么只面向教师收费？<span class="faq-toggle">+</span></div>
+    <div class="faq-a">shuxue.icu 定位为教研工具平台，不是学科培训机构。双减政策禁止面向 K-12 学生的学科类收费培训。我们为教师提供备课、命题、学情分析工具，完全合规。</div>
+  </div>
+  <div class="faq-item" onclick="this.classList.toggle('open')">
+    <div class="faq-q">Team 版座席如何增购？<span class="faq-toggle">+</span></div>
+    <div class="faq-a">Team 版默认 5 座席。超出部分按 ¥39/座席/月增购，上限 20 座席。超过 20 座席建议联系商务定制 Enterprise 方案。</div>
+  </div>
+  <div class="faq-item" onclick="this.classList.toggle('open')">
+    <div class="faq-q">API 数据如何保证隐私合规？<span class="faq-toggle">+</span></div>
+    <div class="faq-a">所有 API 输出数据经三层脱敏：1) 学生姓名→匿名ID；2) 具体成绩→等级(A/B/C)；3) 班级信息→聚合统计。原始可识别数据不出库。API 许可协议禁止逆向提取和再授权。</div>
+  </div>
+  <div class="faq-item" onclick="this.classList.toggle('open')">
+    <div class="faq-q">年付折扣如何计算？<span class="faq-toggle">+</span></div>
+    <div class="faq-a">年付 = 月价 × 10（免2个月），相当于 17% 折扣。Pro 年付 ¥490（原 ¥588），Team 年付 ¥1990（原 ¥2388）。年付中途可退款（按已使用月份扣减）。</div>
+  </div>
+  <div class="faq-item" onclick="this.classList.toggle('open')">
+    <div class="faq-q">免费用户的数据会被用于 API 吗？<span class="faq-toggle">+</span></div>
+    <div class="faq-a">用户协议中明确告知：平台使用脱敏聚合数据（非个人可识别数据）构建教研数据资产。用户可选择退出数据贡献（设置中开启 Privacy Mode），退出后其数据不纳入 API 数据集。</div>
+  </div>
+</section>
+
+<!-- Footer -->
+<footer class="pricing-footer">
+  <p>shuxue.icu · MATH RESEARCH PLATFORM · 教研工具 · 合规运营 · POWERED BY LI WENJIN</p>
+</footer>
+
+<script>
+function switchBilling(type) {
+  const btns = document.querySelectorAll('.tier-toggle button');
+  btns.forEach(b => b.classList.remove('active'));
+  if (type === 'monthly') {
+    btns[0].classList.add('active');
+    document.getElementById('pro-price').textContent = '49';
+    document.getElementById('pro-period').textContent = '/月';
+    document.getElementById('pro-unit').textContent = '单座席 · 按月计费';
+    document.getElementById('team-price').textContent = '199';
+    document.getElementById('team-period').textContent = '/月';
+    document.getElementById('team-unit').textContent = '5 座席 · 含管理后台';
+  } else {
+    btns[1].classList.add('active');
+    document.getElementById('pro-price').textContent = '490';
+    document.getElementById('pro-period').textContent = '/年';
+    document.getElementById('pro-unit').textContent = '年付省 ¥98 · 相当 17% OFF';
+    document.getElementById('team-price').textContent = '1,990';
+    document.getElementById('team-period').textContent = '/年';
+    document.getElementById('team-unit').textContent = '年付省 ¥398 · 相当 17% OFF';
+  }
+}
+
+function showToast(msg) {
+  const t = document.createElement('div');
+  t.style.cssText = 'position:fixed;top:60px;left:50%;transform:translateX(-50%);font-family:var(--font-display);font-size:12px;font-weight:500;letter-spacing:.06em;color:var(--bg-0);background:var(--accent);padding:10px 24px;z-index:999;transition:opacity .3s';
+  t.textContent = msg;
+  document.body.appendChild(t);
+  setTimeout(() => { t.style.opacity = '0'; setTimeout(() => t.remove(), 300); }, 2500);
+}
+</script>
+</body>
+</html>
