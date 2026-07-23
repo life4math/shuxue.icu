@@ -75,6 +75,7 @@ ensure_environment_secrets() {
 
 secure_permissions() {
     chown root:root "$PROJECT_DIR"
+    chmod 755 "$PROJECT_DIR"
     chown -R root:root "$PROJECT_DIR/.git" "$PROJECT_DIR/deploy" "$PROJECT_DIR/website"
     find "$PROJECT_DIR/website" -type d -exec chmod 755 {} +
     find "$PROJECT_DIR/website" -type f -exec chmod 644 {} +
