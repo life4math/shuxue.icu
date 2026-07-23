@@ -13,7 +13,7 @@ from pathlib import Path
 
 from sqlalchemy import select
 
-from platform_db import KnowledgeDocument, SessionLocal, User, init_database
+from platform_db import KnowledgeDocument, PublishedKnowledge, SessionLocal, User, init_database, utcnow
 
 
 SCRIPT_DIR = Path(__file__).resolve().parent
@@ -33,6 +33,7 @@ def read_static_content():
         check=True,
         capture_output=True,
         text=True,
+        encoding="utf-8",
         timeout=15,
     )
     return json.loads(result.stdout)
@@ -62,19 +63,32 @@ def main():
                 item.updated_by = user.id
                 if args.status == "published":
                     item.published_by = user.id
+                    item.published_at = utcnow()
                 updated += 1
-                continue
-            item = KnowledgeDocument(
-                node_id=node_id,
-                title=payload["title"],
-                payload=payload,
-                status=args.status,
-                created_by=user.id,
-                updated_by=user.id,
-                published_by=user.id if args.status == "published" else None,
-            )
-            db.add(item)
-            created += 1
+            else:
+                item = KnowledgeDocument(
+                    node_id=node_id,
+                    title=payload["title"],
+                    payload=payload,
+                    status=args.status,
+                    version=1,
+                    created_by=user.id,
+                    updated_by=user.id,
+                    published_by=user.id if args.status == "published" else None,
+                    published_at=utcnow() if args.status == "published" else None,
+                )
+                db.add(item)
+                created += 1
+            if args.status == "published":
+                snapshot = db.get(PublishedKnowledge, node_id)
+                if not snapshot:
+                    snapshot = PublishedKnowledge(node_id=node_id)
+                    db.add(snapshot)
+                snapshot.title = payload["title"]
+                snapshot.version = item.version or 1
+                snapshot.payload = payload
+                snapshot.published_by = user.id
+                snapshot.published_at = item.published_at or utcnow()
         db.commit()
         print(json.dumps({"created": created, "updated": updated, "total": len(contents)}, ensure_ascii=False))
     finally:

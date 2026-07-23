@@ -68,7 +68,7 @@ function initChart(id, option) {
 
 function redrawAllCharts() {
   // Re-render all charts with current theme
-  const student = getSelectedStudent();
+  const student = typeof currentStudent !== 'undefined' ? currentStudent : null;
   if (student) {
     initRadarChart(student);
     initStudentTrendChart(student);

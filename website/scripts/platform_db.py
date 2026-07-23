@@ -137,6 +137,20 @@ class KnowledgeDocument(Base):
     published_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
 
 
+class PublishedKnowledge(Base):
+    """公开站点读取的不可变发布快照；后台草稿不会覆盖该表。"""
+
+    __tablename__ = "published_knowledge"
+
+    node_id: Mapped[str] = mapped_column(String(40), primary_key=True)
+    title: Mapped[str] = mapped_column(String(160))
+    version: Mapped[int] = mapped_column(Integer)
+    payload: Mapped[dict] = mapped_column(JSON)
+    published_by: Mapped[Optional[str]] = mapped_column(ForeignKey("users.id"), nullable=True)
+    published_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow, onupdate=utcnow)
+
+
 class AuditLog(Base):
     __tablename__ = "audit_logs"
 
@@ -163,3 +177,30 @@ SessionLocal = scoped_session(sessionmaker(bind=engine, autoflush=False, expire_
 
 def init_database():
     Base.metadata.create_all(engine)
+
+
+def ensure_published_knowledge_snapshots():
+    """首次升级时把旧的 published 文档回填为公开快照。"""
+
+    db = SessionLocal()
+    try:
+        rows = db.query(KnowledgeDocument).filter(KnowledgeDocument.status == "published").all()
+        changed = False
+        for item in rows:
+            if db.get(PublishedKnowledge, item.node_id):
+                continue
+            db.add(
+                PublishedKnowledge(
+                    node_id=item.node_id,
+                    title=item.title,
+                    version=item.version,
+                    payload=item.payload,
+                    published_by=item.published_by,
+                    published_at=item.published_at or item.updated_at or item.created_at,
+                )
+            )
+            changed = True
+        if changed:
+            db.commit()
+    finally:
+        SessionLocal.remove()

@@ -15,12 +15,14 @@ from platform_db import (
     AIJob,
     AuditLog,
     LoginFailure,
+    PublishedKnowledge,
     PublishedContent,
     ReviewItem,
     SessionLocal,
     UploadFile,
     User,
     KnowledgeDocument,
+    ensure_published_knowledge_snapshots,
     init_database,
 )
 
@@ -533,6 +535,16 @@ def _knowledge_json(item):
     }
 
 
+def _published_knowledge_json(item):
+    return {
+        "node_id": item.node_id,
+        "title": item.title,
+        "version": item.version,
+        "payload": item.payload,
+        "published_at": item.published_at.isoformat() if item.published_at else None,
+    }
+
+
 def _valid_knowledge_payload(body):
     if not isinstance(body, dict):
         return None, "payload must be an object"
@@ -570,13 +582,15 @@ def _valid_knowledge_payload(body):
 def public_knowledge(node_id):
     db = SessionLocal()
     try:
-        item = db.scalar(select(KnowledgeDocument).where(
-            KnowledgeDocument.node_id == node_id,
-            KnowledgeDocument.status == "published",
-        ))
+        item = db.get(PublishedKnowledge, node_id)
         if not item:
             return _json_error("knowledge document not found", 404)
-        return jsonify({"knowledge": _knowledge_json(item)})
+        response = jsonify({"knowledge": _published_knowledge_json(item)})
+        response.set_etag(f"knowledge-{item.node_id}-v{item.version}")
+        response.cache_control.public = True
+        response.cache_control.max_age = 0
+        response.cache_control.must_revalidate = True
+        return response.make_conditional(request)
     finally:
         SessionLocal.remove()
 
@@ -585,8 +599,8 @@ def public_knowledge(node_id):
 def public_knowledge_list():
     db = SessionLocal()
     try:
-        rows = db.scalars(select(KnowledgeDocument).where(KnowledgeDocument.status == "published")).all()
-        return jsonify({"items": [_knowledge_json(row) for row in rows]})
+        rows = db.scalars(select(PublishedKnowledge).order_by(PublishedKnowledge.node_id)).all()
+        return jsonify({"items": [_published_knowledge_json(row) for row in rows]})
     finally:
         SessionLocal.remove()
 
@@ -658,6 +672,15 @@ def publish_knowledge(db, node_id):
     item.published_by = request.current_user.id
     item.published_at = datetime.utcnow()
     item.updated_by = request.current_user.id
+    snapshot = db.get(PublishedKnowledge, node_id)
+    if not snapshot:
+        snapshot = PublishedKnowledge(node_id=node_id)
+        db.add(snapshot)
+    snapshot.title = item.title
+    snapshot.version = item.version
+    snapshot.payload = item.payload
+    snapshot.published_by = request.current_user.id
+    snapshot.published_at = item.published_at
     _audit(db, request.current_user, "knowledge.publish", "knowledge", node_id, {"version": item.version})
     db.commit()
     return jsonify({"knowledge": _knowledge_json(item)})
@@ -756,6 +779,7 @@ def configure_platform(app):
         raise RuntimeError("SHUXUE_SESSION_SECRET must be configured")
     if environment == "production" and len(session_secret) < 32:
         raise RuntimeError("SHUXUE_SESSION_SECRET must contain at least 32 characters in production")
+    ensure_published_knowledge_snapshots()
 
     app.config.update(
         SECRET_KEY=session_secret,

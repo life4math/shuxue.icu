@@ -277,6 +277,72 @@ def test_knowledge_document_draft_submit_publish_and_public_read(tmp_path):
     public = client.get("/api/v1/public/knowledge/FUNC-01-01")
     assert public.status_code == 200
     assert public.get_json()["knowledge"]["payload"]["sections"][0]["items"][0]["math"] == "a\\in A"
+    first_etag = public.headers["ETag"]
+    assert client.get(
+        "/api/v1/public/knowledge/FUNC-01-01",
+        headers={"If-None-Match": first_etag},
+    ).status_code == 304
+
+    draft_payload = {
+        "title": "集合（修订中）",
+        "sections": [{"title": "定义", "items": [{"text": "尚未发布的新草稿。", "math": "b\\in B"}]}],
+    }
+    draft = client.put("/api/v1/admin/knowledge/FUNC-01-01", json=draft_payload, headers=headers)
+    assert draft.status_code == 200
+    assert draft.get_json()["knowledge"]["status"] == "draft"
+
+    still_public = client.get("/api/v1/public/knowledge/FUNC-01-01")
+    assert still_public.status_code == 200
+    assert still_public.get_json()["knowledge"]["payload"]["sections"][0]["items"][0]["math"] == "a\\in A"
+    assert still_public.headers["ETag"] == first_etag
+
+    republished = client.post(
+        "/api/v1/admin/knowledge/FUNC-01-01/publish",
+        headers={"X-CSRF-Token": csrf},
+    )
+    assert republished.status_code == 200
+    updated_public = client.get("/api/v1/public/knowledge/FUNC-01-01")
+    assert updated_public.get_json()["knowledge"]["payload"]["sections"][0]["items"][0]["math"] == "b\\in B"
+    assert updated_public.headers["ETag"] != first_etag
+
+
+def test_existing_published_knowledge_is_backfilled_on_upgrade(tmp_path):
+    app, db_module = build_app(tmp_path)
+    email, _ = create_user(db_module)
+    db = db_module.SessionLocal()
+    user = db.scalar(select(db_module.User).where(db_module.User.email == email))
+    db.add(
+        db_module.KnowledgeDocument(
+            node_id="GEOM-01-01",
+            title="向量",
+            status="published",
+            version=3,
+            payload={
+                "title": "向量",
+                "sections": [{"title": "定义", "items": [{"text": "旧版本已发布正文"}]}],
+            },
+            created_by=user.id,
+            updated_by=user.id,
+            published_by=user.id,
+        )
+    )
+    db.commit()
+    db_module.SessionLocal.remove()
+
+    db_module.ensure_published_knowledge_snapshots()
+    public = app.test_client().get("/api/v1/public/knowledge/GEOM-01-01")
+    assert public.status_code == 200
+    assert public.get_json()["knowledge"]["version"] == 3
+    assert public.get_json()["knowledge"]["payload"]["sections"][0]["items"][0]["text"] == "旧版本已发布正文"
+
+
+def test_static_knowledge_seed_parser_is_utf8_safe():
+    sys.modules.pop("seed_knowledge", None)
+    seed_knowledge = importlib.import_module("seed_knowledge")
+    contents = seed_knowledge.read_static_content()
+    assert len(contents) == 51
+    assert contents["FUNC-01-01"]["title"] == "集合的概念与运算"
+    assert contents["CALC-01-02"]["sections"]
 
 
 def test_health_and_readiness(tmp_path):
