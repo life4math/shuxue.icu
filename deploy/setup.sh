@@ -125,14 +125,13 @@ dnf upgrade-minimal --security -y --skip-broken 2>/dev/null || {
     echo -e "${YELLOW}  安全更新部分跳过，不影响部署${NC}"
 }
 
-# 安装 nginx + python39 + nodejs + git
-# 使用 python39 而非 python3 (因为系统默认 python3 是 3.6，太旧)
+# 使用 python38 (python39 模块在等保2.0系统上不存在，只有 python27/36/38)
 dnf install -y epel-release 2>/dev/null || true
-dnf install -y nginx python39 python39-pip nodejs git
+dnf module enable -y python38:3.8 2>/dev/null || true
+dnf install -y nginx python38 python38-pip git
 
 echo -e "${GREEN}  -> 系统依赖安装完成${NC}"
-echo -e "  Python: $(python3.9 --version 2>&1)"
-echo -e "  Node:   $(node --version 2>&1)"
+echo -e "  Python: $(python3.8 --version 2>&1)"
 echo -e "  Nginx:  $(nginx -v 2>&1)"
 echo ""
 
@@ -168,10 +167,10 @@ echo ""
 # ========================================
 # 第3步: 创建 Python 虚拟环境 (使用 python3.9)
 # ========================================
-echo -e "${YELLOW}[3/8] 创建 Python 3.9 虚拟环境...${NC}"
+echo -e "${YELLOW}[3/8] 创建 Python 3.8 虚拟环境...${NC}"
 
-# 使用 python3.9 创建 venv (不是 python3，因为系统 python3 是 3.6)
-python3.9 -m venv "$VENV_DIR"
+# 使用 python3.8 创建 venv (python39 模块不存在，系统只有 27/36/38)
+python3.8 -m venv "$VENV_DIR"
 source "$VENV_DIR/bin/activate"
 pip install --upgrade pip -q
 pip install -r "$PROJECT_DIR/requirements.txt" -q || {
@@ -238,9 +237,9 @@ User=nginx
 Group=nginx
 WorkingDirectory=/var/www/shuxue/website/scripts
 Environment="PATH=/var/www/shuxue/venv/bin:/usr/bin"
-Environment="SHUXUE_PORT=5000"
+Environment="SHUXUE_PORT=8000"
 Environment="SHUXUE_NODE_PATH=/usr/bin/node"
-ExecStart=/var/www/shuxue/venv/bin/gunicorn -w 2 -b 127.0.0.1:5000 server:app
+ExecStart=/var/www/shuxue/venv/bin/gunicorn -w 2 -b 127.0.0.1:8000 server:app
 Restart=always
 RestartSec=3
 
@@ -268,6 +267,17 @@ echo ""
 # ========================================
 echo -e "${YELLOW}[7/8] 配置 Nginx...${NC}"
 
+# 修复: 阿里云等保2.0定制版 nginx.conf 默认缺少 conf.d include
+if ! grep -q 'include.*conf.d' /etc/nginx/nginx.conf; then
+    echo -e "${YELLOW}  nginx.conf 缺少 conf.d include，添加中...${NC}"
+    sed -i '/^http {/a\    include /etc/nginx/conf.d/*.conf;' /etc/nginx/nginx.conf
+    echo -e "${GREEN}  -> 已添加 include /etc/nginx/conf.d/*.conf${NC}"
+fi
+
+# 禁用可能冲突的默认配置
+mv /etc/nginx/conf.d/default.conf /etc/nginx/conf.d/default.conf.bak 2>/dev/null || true
+mv /etc/nginx/conf.d/nextjs.conf /etc/nginx/conf.d/nextjs.conf.bak 2>/dev/null || true
+
 NGINX_CONF_DST="/etc/nginx/conf.d/shuxue.icu.conf"
 SSL_DIR="/etc/nginx/ssl"
 
@@ -278,34 +288,33 @@ if [ -d "$SSL_DIR" ] && [ -f "$SSL_DIR/shuxue.icu.pem" ] && [ -f "$SSL_DIR/shuxu
         cp "$NGINX_CONF_SRC" "$NGINX_CONF_DST"
     fi
 else
-    echo -e "${YELLOW}  SSL 证书不存在，创建临时 HTTP 配置...${NC}"
+    echo -e "${YELLOW}  SSL 证书不存在，创建 HTTP 配置...${NC}"
     cat > "$NGINX_CONF_DST" << 'NGINXEOF'
 server {
-    listen 80;
-    server_name shuxue.icu www.shuxue.icu;
+    listen 80 default_server;
+    listen [::]:80 default_server;
+    server_name shuxue.icu www.shuxue.icu _;
 
-    location /css/      { root /var/www/shuxue/website; expires 7d; }
-    location /js/       { root /var/www/shuxue/website; expires 7d; }
-    location /vendor/   { root /var/www/shuxue/website; expires 30d; }
-    location /uploads/  { root /var/www/shuxue/website; expires 1d; }
+    root /var/www/shuxue/website;
+    index index.html;
 
-    location = /               { root /var/www/shuxue/website; try_files /index.html =404; }
-    location = /index.html     { root /var/www/shuxue/website; }
-    location = /student.html   { root /var/www/shuxue/website; }
-    location = /pricing.html   { root /var/www/shuxue/website; }
+    location /css/      { expires 7d; }
+    location /js/       { expires 7d; }
+    location /vendor/   { expires 30d; }
+    location /uploads/  { expires 1d; }
 
+    location / {
+        try_files $uri $uri/ /index.html;
+    }
+
+    # API 代理到 Flask (8000端口，不用5000 — 阿里云 RemoteManage 占用)
     location /api/ {
-        proxy_pass http://127.0.0.1:5000;
+        proxy_pass http://127.0.0.1:8000;
         proxy_set_header Host $host;
         proxy_set_header X-Real-IP $remote_addr;
         proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
         client_max_body_size 50M;
-    }
-
-    location / {
-        proxy_pass http://127.0.0.1:5000;
-        proxy_set_header Host $host;
-        proxy_set_header X-Real-IP $remote_addr;
     }
 }
 NGINXEOF
@@ -347,7 +356,7 @@ echo -e "${GREEN}  部署完成！${NC}"
 echo -e "${CYAN}========================================${NC}"
 echo ""
 echo -e "验证步骤:"
-echo -e "  1. 本地测试:  ${GREEN}curl http://127.0.0.1:5000/api/questions${NC}"
+echo -e "  1. 本地测试:  ${GREEN}curl http://127.0.0.1:8000/api/questions${NC}"
 echo -e "  2. Nginx测试: ${GREEN}curl http://127.0.0.1/api/questions${NC}"
 echo -e "  3. 外部访问:  ${GREEN}http://你的ECS公网IP/${NC}"
 echo -e "  4. 域名访问:  ${GREEN}http://shuxue.icu/${NC}"
