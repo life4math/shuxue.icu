@@ -24,9 +24,11 @@ jobs:
 
       - name: 后端单元测试
         run: |
-          python3.8 -m venv /tmp/shuxue-ci-venv
-          /tmp/shuxue-ci-venv/bin/pip install -q -r requirements.txt
-          cd website/scripts && /tmp/shuxue-ci-venv/bin/python -m pytest -q ../../tests
+          python3.8 -m venv "$RUNNER_TEMP/shuxue-ci-venv"
+          "$RUNNER_TEMP/shuxue-ci-venv/bin/python" -m pip install -q --upgrade "pip<26"
+          "$RUNNER_TEMP/shuxue-ci-venv/bin/python" -m pip install -q -r requirements.txt
+          cd website/scripts
+          "$RUNNER_TEMP/shuxue-ci-venv/bin/python" -m pytest -q ../../tests
 
   # ── 阶段二：部署（校验通过后，更新生产目录并优雅重启）──
   deploy:
