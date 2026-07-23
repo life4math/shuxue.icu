@@ -45,6 +45,7 @@ requirements.txt       # Python dependencies (Flask, Gunicorn, pdfplumber, mammo
   - `/api/upload` — file upload + AI analysis
   - `/api/analyze` — student analytics
   - Config in `config.json` (OpenAI API key, ⚠️ never commit)
+  - Admin API authentication uses `SHUXUE_ADMIN_TOKEN` from the environment
 - **Production**: Nginx (443/SSL → 8000/Gunicorn → Flask)
   - Nginx serves static files directly, proxies `/api/` to Flask
   - HTTP port 80 redirects to HTTPS with HSTS
@@ -110,6 +111,9 @@ bash deploy/setup.sh
 - **config.example.json** is the safe template — always use this as reference
 - **.gitignore** must always exclude: `.workbuddy/`, `uploads/`, `config.json`, `__pycache__`, `venv`, `node_modules`
 - **SSL certificates** on server are private — never include in repo
+- **Admin token** is stored in `/etc/shuxue/shuxue.env` in production — never commit it
+- All mutating `/api/*` requests must use `Authorization: Bearer <token>` or `X-Admin-Token`
+- Uploaded files must never be served directly from `/uploads/`
 - When adding new secrets/API keys, always add to .gitignore first
 
 ## Testing & Verification
@@ -118,7 +122,8 @@ bash deploy/setup.sh
   - Open `index.html` in browser, check all 5 tabs load correctly
   - Verify theme switching works (brand hover dropdown + About page)
   - Check subscription tier badge display and feature locking
-  - For API: `curl https://shuxue.icu/api/questions` should return JSON
+  - Public API: `curl https://shuxue.icu/api/questions` should return JSON
+  - Admin API: send the token from `/etc/shuxue/shuxue.env`; unauthenticated requests must return 401
 - After any frontend change, verify: math rendering (KaTeX), charts (ECharts), responsive layout
 
 ## Common Tasks
@@ -145,3 +150,4 @@ bash deploy/setup.sh
 - Do not commit config.json, uploads/, or any secrets
 - Do not change background/text/border colors based on theme
 - Do not use python39 on the production server (only python38 available)
+
