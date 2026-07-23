@@ -4,10 +4,25 @@
 #
 # 由 GitHub Actions 自托管 Runner 调用，也可手动执行：
 #   sudo /var/www/shuxue/deploy/deploy.sh
+#   sudo /var/www/shuxue/deploy/deploy.sh --bundle /path/to/shuxue-release.bundle
 #
 # 退出码：0 = 部署成功且健康；非 0 = 失败（已尝试回滚）
 
 set -euo pipefail
+
+RELEASE_BUNDLE=""
+if [ "${1:-}" = "--bundle" ]; then
+    if [ -z "${2:-}" ] || [ ! -f "$2" ]; then
+        echo "[deploy] 离线部署包不存在: ${2:-<empty>}" >&2
+        exit 2
+    fi
+    RELEASE_BUNDLE="$(readlink -f "$2")"
+    shift 2
+fi
+if [ "$#" -ne 0 ]; then
+    echo "[deploy] 未知参数: $*" >&2
+    exit 2
+fi
 
 PROJECT_DIR="${SHUXUE_PROJECT_DIR:-/var/www/shuxue}"
 VENV_DIR="${SHUXUE_VENV_DIR:-$PROJECT_DIR/venv}"
@@ -26,7 +41,7 @@ log() { echo -e "[deploy] $*"; }
 cd "$PROJECT_DIR"
 git config --global --add safe.directory "$PROJECT_DIR" 2>/dev/null || true
 
-# ── 记录当前版本用于回滚 ──────────────────────────────
+# ── 记录当前版本用于回滚 ───────────────────────────────
 PREV="$(git rev-parse HEAD)"
 log "当前版本: $PREV"
 
@@ -41,9 +56,17 @@ if ! git diff --quiet; then
     log "服务器本地差异已备份到: $BACKUP_DIR"
 fi
 
-# ── 拉取目标版本 ─────────────────────────────────────
-git fetch --prune origin "$BRANCH"
-git reset --hard "origin/$BRANCH"
+# ── 导入目标版本 ─────────────────────────────────────
+# CI 优先传入已校验的 Git bundle，避免生产 ECS 必须直连 github.com。
+# 手工执行未传 bundle 时，仍保留原来的远程拉取方式。
+if [ -n "$RELEASE_BUNDLE" ]; then
+    log "从 CI 离线部署包导入目标版本。"
+    git fetch --no-tags "$RELEASE_BUNDLE" HEAD
+    git reset --hard FETCH_HEAD
+else
+    git fetch --prune origin "$BRANCH"
+    git reset --hard "origin/$BRANCH"
+fi
 NEW="$(git rev-parse HEAD)"
 log "目标版本: $NEW"
 
@@ -204,14 +227,14 @@ if ! python3.8 deploy/check_integrity.py; then
     exit 1
 fi
 
-# ── 同步依赖、运行配置并重启 ─────────────────────────
+# ── 同步依赖、运行配置并重启 ────────────────────────
 if ! sync_deps || ! ensure_environment_secrets || ! secure_permissions \
     || ! install_services || ! install_nginx_config || ! restart_services; then
     rollback
     exit 1
 fi
 
-# ── 部署后健康检查 ───────────────────────────────────
+# ── 部署后健康检查 ────────────────────────────────────
 if health_ok 0; then
     log "部署成功，API、数据库、后台页面和 Worker 均通过检查: $NEW"
     exit 0

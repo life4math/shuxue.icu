@@ -33,11 +33,30 @@ jobs:
           cd website/scripts
           "$RUNNER_TEMP/shuxue-ci-venv/bin/python" -m pytest -q ../../tests
 
+      - name: 生成离线部署包
+        if: github.event_name == 'workflow_dispatch' || contains(github.event.head_commit.message, '[deploy]')
+        run: git bundle create "$RUNNER_TEMP/shuxue-release.bundle" HEAD
+
+      - name: 上传离线部署包
+        if: github.event_name == 'workflow_dispatch' || contains(github.event.head_commit.message, '[deploy]')
+        uses: actions/upload-artifact@v4
+        with:
+          name: shuxue-release-${{ github.sha }}
+          path: ${{ runner.temp }}/shuxue-release.bundle
+          if-no-files-found: error
+          retention-days: 3
+
   # ── 阶段二：部署（校验通过后，更新生产目录并优雅重启）──
   deploy:
     if: github.event_name == 'workflow_dispatch' || contains(github.event.head_commit.message, '[deploy]')
     needs: verify
     runs-on: [self-hosted, shuxue]
     steps:
+      - name: 下载已校验的离线部署包
+        uses: actions/download-artifact@v4
+        with:
+          name: shuxue-release-${{ github.sha }}
+          path: ${{ runner.temp }}/shuxue-release
+
       - name: 执行部署（含健康检查与失败自动回滚）
-        run: sudo /var/www/shuxue/deploy/deploy.sh
+        run: sudo /var/www/shuxue/deploy/deploy.sh --bundle "$RUNNER_TEMP/shuxue-release/shuxue-release.bundle"
