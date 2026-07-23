@@ -101,22 +101,57 @@ python server.py
 
 ### 阿里云 ECS (Alibaba Cloud Linux 3)
 
-```bash
-# 安装依赖
-dnf install -y nginx python3 python3-pip nodejs
+项目内置一键部署脚本，SSH 登录服务器后执行：
 
-# 项目部署
-mkdir -p /var/www/shuxue
-cp -r website/ /var/www/shuxue/website/
+```bash
+# 1. 下载部署脚本（或直接 clone 整个仓库后运行 deploy/setup.sh）
+curl -o setup.sh https://raw.githubusercontent.com/life4math/shuxue.icu/main/deploy/setup.sh
+chmod +x setup.sh
+sudo bash setup.sh
+```
+
+脚本会自动完成：安装系统依赖 → git clone 项目 → 创建 Python venv → 安装依赖 → 配置 config.json → 设置权限 → 配置 systemd 服务 → 配置 Nginx → 防火墙放行
+
+部署完成后还需手动完成：
+1. **DNS 解析**：阿里云 DNS 添加 A 记录 `shuxue.icu` → ECS 公网 IP
+2. **SSL 证书**：申请后放到 `/etc/nginx/ssl/`，重新运行 `sudo bash setup.sh` 即可切换 HTTPS
+3. **ICP 备案号**：在页面底部添加备案号
+
+### 手动部署
+
+如需手动部署，参考以下步骤：
+
+```bash
+# 安装系统依赖
+dnf install -y nginx python3 python3-pip nodejs git
+
+# 克隆项目
+git clone https://github.com/life4math/shuxue.icu.git /var/www/shuxue/website
+
+# 创建虚拟环境 + 安装依赖
 cd /var/www/shuxue
 python3 -m venv venv
 source venv/bin/activate
-pip install flask gunicorn pdfplumber mammoth openai
+pip install -r website/../requirements.txt
 
-# Gunicorn 启动
-gunicorn -w 2 -b 127.0.0.1:5000 server:app
+# 配置 API
+cp website/scripts/config.example.json website/scripts/config.json
 
-# Nginx 反向代理 → 127.0.0.1:5000
+# 设置权限
+chown -R nginx:nginx /var/www/shuxue
+chmod -R 775 /var/www/shuxue/website/uploads
+
+# 配置 systemd
+cp website/deploy/shuxue.service /etc/systemd/system/
+systemctl daemon-reload && systemctl enable --now shuxue
+
+# 配置 Nginx
+cp website/deploy/shuxue.icu.conf /etc/nginx/conf.d/
+nginx -t && systemctl restart nginx
+
+# 防火墙
+firewall-cmd --permanent --add-service={http,https}
+firewall-cmd --reload
 ```
 
 ## License

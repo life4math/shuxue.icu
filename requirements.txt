@@ -1,0 +1,5 @@
+flask>=3.0
+gunicorn>=21.2
+pdfplumber>=0.10
+mammoth>=1.6
+openai>=1.0
