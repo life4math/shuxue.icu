@@ -20,11 +20,19 @@ import sys
 import json
 import re
 import hashlib
+import hmac
 import datetime
 import shutil
+import tempfile
+import threading
 from pathlib import Path
-from flask import Flask, request, jsonify, send_from_directory, send_file
+from flask import Flask, request, jsonify, send_from_directory, send_file, g
 from werkzeug.utils import secure_filename
+
+try:
+    import fcntl
+except ImportError:  # Windows 开发环境回退；生产 Linux 使用 flock
+    fcntl = None
 
 # ─── 配置 ─────────────────────────────────────────────
 SCRIPT_DIR = Path(__file__).resolve().parent
@@ -34,6 +42,7 @@ UPLOAD_DIR = WEBSITE_DIR / "uploads"
 OUTPUT_DIR = SCRIPT_DIR / "output"
 SCHEMA_PATH = SCRIPT_DIR / "schema.json"
 CONFIG_PATH = SCRIPT_DIR / "config.json"
+DATA_LOCK_PATH = SCRIPT_DIR / ".data.lock"
 
 ALLOWED_EXTENSIONS = {
     ".png", ".jpg", ".jpeg", ".bmp", ".webp",   # 图片
@@ -44,6 +53,78 @@ ALLOWED_EXTENSIONS = {
 
 app = Flask(__name__, static_folder=None)
 app.config["MAX_CONTENT_LENGTH"] = 50 * 1024 * 1024  # 50MB
+_process_write_lock = threading.Lock()
+
+
+def _admin_token():
+    """管理令牌只从环境变量读取，避免意外写入仓库。"""
+    return os.environ.get("SHUXUE_ADMIN_TOKEN", "")
+
+
+def _request_token():
+    auth = request.headers.get("Authorization", "")
+    if auth.startswith("Bearer "):
+        return auth[7:].strip()
+    return request.headers.get("X-Admin-Token", "").strip()
+
+
+def _is_protected_api():
+    if not request.path.startswith("/api/"):
+        return False
+    return (
+        request.method != "GET"
+        or request.path == "/api/review"
+        or request.path == "/api/uploads-list"
+        or request.path.startswith("/api/uploads/")
+    )
+
+
+@app.before_request
+def protect_admin_api_and_lock_writes():
+    """管理 API 默认拒绝访问，并串行化所有修改请求。"""
+    if not _is_protected_api():
+        return None
+
+    expected = _admin_token()
+    supplied = _request_token()
+    if not expected:
+        return jsonify({"error": "admin API is not configured"}), 503
+    if not supplied or not hmac.compare_digest(supplied, expected):
+        return jsonify({"error": "unauthorized"}), 401
+
+    if request.method != "GET":
+        _process_write_lock.acquire()
+        lock_handle = DATA_LOCK_PATH.open("a+")
+        if fcntl is not None:
+            fcntl.flock(lock_handle.fileno(), fcntl.LOCK_EX)
+        g.data_lock_handle = lock_handle
+    return None
+
+
+@app.teardown_request
+def release_write_lock(_error=None):
+    lock_handle = getattr(g, "data_lock_handle", None)
+    if lock_handle is None:
+        return
+    try:
+        if fcntl is not None:
+            fcntl.flock(lock_handle.fileno(), fcntl.LOCK_UN)
+        lock_handle.close()
+    finally:
+        _process_write_lock.release()
+
+
+def resolve_upload_path(filename):
+    """只允许 uploads 目录内的单个安全文件名。"""
+    if not isinstance(filename, str) or not filename:
+        return None
+    if filename != Path(filename).name or filename != secure_filename(filename):
+        return None
+    candidate = (UPLOAD_DIR / filename).resolve()
+    upload_root = UPLOAD_DIR.resolve()
+    if candidate.parent != upload_root:
+        return None
+    return candidate
 
 # ─── ID 生成器 ────────────────────────────────────────
 _counters = {"Q": 0, "M": 0, "R": 0}
@@ -400,7 +481,25 @@ const reviewQueue = {json.dumps(data.get("reviewQueue", []), indent=2, ensure_as
     for section in sections:
         js_content += section + "\n\n"
 
-    DATA_JS_PATH.write_text(js_content, encoding="utf-8")
+    DATA_JS_PATH.parent.mkdir(parents=True, exist_ok=True)
+    temp_path = None
+    try:
+        with tempfile.NamedTemporaryFile(
+            mode="w",
+            encoding="utf-8",
+            dir=str(DATA_JS_PATH.parent),
+            prefix=".data.",
+            suffix=".tmp",
+            delete=False,
+        ) as temp_file:
+            temp_file.write(js_content)
+            temp_file.flush()
+            os.fsync(temp_file.fileno())
+            temp_path = Path(temp_file.name)
+        os.replace(temp_path, DATA_JS_PATH)
+    finally:
+        if temp_path and temp_path.exists():
+            temp_path.unlink()
 
 # ─── API 路由 ─────────────────────────────────────────
 
@@ -412,6 +511,8 @@ def serve_index():
 @app.route("/<path:path>")
 def serve_static(path):
     """服务所有静态文件"""
+    if path == "uploads" or path.startswith("uploads/"):
+        return jsonify({"error": "not found"}), 404
     file_path = WEBSITE_DIR / path
     if file_path.exists():
         return send_from_directory(str(WEBSITE_DIR), path)
@@ -482,7 +583,9 @@ def process_uploaded():
 
     if filename:
         # 处理单个指定文件
-        filepath = UPLOAD_DIR / filename
+        filepath = resolve_upload_path(filename)
+        if filepath is None:
+            return jsonify({"error": "invalid filename"}), 400
         if not filepath.exists():
             return jsonify({"error": f"file not found: {filename}"}), 404
         items = process_file(str(filepath), filename)
@@ -717,3 +820,4 @@ if __name__ == "__main__":
 
     port = int(os.environ.get("SHUXUE_PORT", 5000))
     app.run(host="0.0.0.0", port=port, debug=False)
+
