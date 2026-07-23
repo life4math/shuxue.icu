@@ -171,7 +171,7 @@ echo -e "  Web 文件: $WEBSITE_DIR"
 echo ""
 
 # ========================================
-# 第3步: 创建 Python 虚拟环境 (使用 python3.9)
+# 第3步: 创建 Python 3.8 虚拟环境
 # ========================================
 echo -e "${YELLOW}[3/8] 创建 Python 3.8 虚拟环境...${NC}"
 
@@ -181,7 +181,7 @@ source "$VENV_DIR/bin/activate"
 pip install --upgrade pip -q
 pip install -r "$PROJECT_DIR/requirements.txt" -q || {
     echo -e "${YELLOW}  requirements.txt 安装失败，尝试手动安装...${NC}"
-    pip install flask gunicorn pdfplumber mammoth openai
+    pip install flask gunicorn pdfplumber mammoth openai SQLAlchemy psycopg2-binary pytest
 }
 
 echo -e "${GREEN}  -> Python 依赖安装完成${NC}"
@@ -212,14 +212,20 @@ echo -e "${YELLOW}[5/8] 设置目录权限...${NC}"
 mkdir -p "$WEBSITE_DIR/uploads"
 mkdir -p "$WEBSITE_DIR/scripts/output"
 
-# Nginx 用户需要读取权限 + uploads/data.js 写权限。
-# 不使用 chmod -R 755，避免把普通文件全部标记为可执行并污染 Git 状态。
-chown -R nginx:nginx "$PROJECT_DIR"
+# 代码由 root 持有；仅运行时目录和兼容数据文件允许 nginx 写入。
+chown -R root:root "$PROJECT_DIR"
 find "$WEBSITE_DIR" -type d -exec chmod 755 {} +
 find "$WEBSITE_DIR" -type f -exec chmod 644 {} +
-chmod -R 775 "$WEBSITE_DIR/uploads"
+chown -R nginx:nginx "$WEBSITE_DIR/uploads" "$WEBSITE_DIR/scripts/output"
+chmod -R 775 "$WEBSITE_DIR/uploads" "$WEBSITE_DIR/scripts/output"
+chown nginx:nginx "$WEBSITE_DIR/js/data.js" 2>/dev/null || true
 chmod 664 "$WEBSITE_DIR/js/data.js" 2>/dev/null || true
-chmod 600 "$WEBSITE_DIR/scripts/config.json" 2>/dev/null || true
+if [ -f "$WEBSITE_DIR/scripts/platform.db" ]; then
+    chown nginx:nginx "$WEBSITE_DIR/scripts/platform.db"
+    chmod 660 "$WEBSITE_DIR/scripts/platform.db"
+fi
+chown root:nginx "$WEBSITE_DIR/scripts/config.json" 2>/dev/null || true
+chmod 640 "$WEBSITE_DIR/scripts/config.json" 2>/dev/null || true
 
 echo -e "${GREEN}  -> 权限设置完成${NC}"
 echo ""
@@ -237,12 +243,18 @@ ENV_FILE="$ENV_DIR/shuxue.env"
 install -d -m 700 "$ENV_DIR"
 if [ ! -f "$ENV_FILE" ]; then
     ADMIN_TOKEN="$(python3.8 -c 'import secrets; print(secrets.token_hex(32))')"
-    printf 'SHUXUE_ADMIN_TOKEN=%s\n' "$ADMIN_TOKEN" > "$ENV_FILE"
+    SESSION_SECRET="$(python3.8 -c 'import secrets; print(secrets.token_hex(48))')"
+    printf 'SHUXUE_ADMIN_TOKEN=%s\nSHUXUE_SESSION_SECRET=%s\n' \
+        "$ADMIN_TOKEN" "$SESSION_SECRET" > "$ENV_FILE"
     chmod 600 "$ENV_FILE"
     echo -e "${GREEN}  -> 已生成管理 API 令牌: $ENV_FILE${NC}"
 else
+    if ! grep -q '^SHUXUE_SESSION_SECRET=' "$ENV_FILE"; then
+        SESSION_SECRET="$(python3.8 -c 'import secrets; print(secrets.token_hex(48))')"
+        printf 'SHUXUE_SESSION_SECRET=%s\n' "$SESSION_SECRET" >> "$ENV_FILE"
+    fi
     chmod 600 "$ENV_FILE"
-    echo -e "${GREEN}  -> 保留现有管理 API 令牌: $ENV_FILE${NC}"
+    echo -e "${GREEN}  -> 保留现有管理 API 令牌并确认 Session 密钥: $ENV_FILE${NC}"
 fi
 
 if [ -f "$SERVICE_SRC" ]; then
@@ -271,16 +283,17 @@ WantedBy=multi-user.target
 EOF
 fi
 
+install -m 644 "$PROJECT_DIR/deploy/shuxue-worker.service" /etc/systemd/system/shuxue-worker.service
 systemctl daemon-reload
-systemctl enable shuxue
-systemctl restart shuxue
+systemctl enable shuxue shuxue-worker
+systemctl restart shuxue shuxue-worker
 
 sleep 2
-if systemctl is-active --quiet shuxue; then
-    echo -e "${GREEN}  -> shuxue 服务已启动${NC}"
+if systemctl is-active --quiet shuxue && systemctl is-active --quiet shuxue-worker; then
+    echo -e "${GREEN}  -> Web 与 Worker 服务均已启动${NC}"
 else
-    echo -e "${RED}  -> shuxue 服务启动失败！${NC}"
-    echo -e "${YELLOW}  查看日志: journalctl -u shuxue -n 20${NC}"
+    echo -e "${RED}  -> Web 或 Worker 服务启动失败！${NC}"
+    echo -e "${YELLOW}  查看日志: journalctl -u shuxue -u shuxue-worker -n 40${NC}"
     exit 1
 fi
 echo ""
@@ -309,6 +322,11 @@ if [ -d "$SSL_DIR" ] && [ -f "$SSL_DIR/shuxue.icu.pem" ] && [ -f "$SSL_DIR/shuxu
     NGINX_CONF_SRC="$PROJECT_DIR/deploy/shuxue.icu.conf"
     if [ -f "$NGINX_CONF_SRC" ]; then
         cp "$NGINX_CONF_SRC" "$NGINX_CONF_DST"
+    fi
+    if [ -f "$SSL_DIR/admin.shuxue.icu.pem" ] && [ -f "$SSL_DIR/admin.shuxue.icu.key" ]; then
+        install -m 644 "$PROJECT_DIR/deploy/admin.shuxue.icu.conf.example" \
+            /etc/nginx/conf.d/admin.shuxue.icu.conf
+        echo -e "${GREEN}  -> 已启用 admin.shuxue.icu 独立后台配置${NC}"
     fi
 else
     echo -e "${YELLOW}  SSL 证书不存在，创建 HTTP 配置...${NC}"

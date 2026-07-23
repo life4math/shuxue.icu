@@ -1,6 +1,6 @@
 # 自动部署闭环 · 安装配置指南
 
-目标：**push 到 `main` → 阿里云 ECS 自动更新项目**，含部署前完整性校验、部署后健康检查、失败自动回滚。
+目标：**push 到 `main` 自动校验，达到可发布状态时再部署到阿里云 ECS**，含部署前完整性校验、部署后健康检查、失败自动回滚。
 
 采用 **GitHub 自托管 Runner** 方案：部署动作在你自己的 ECS 上本地执行，**无需对公网开放任何入站端口**，适合等保2.0环境。
 
@@ -12,7 +12,7 @@
 
 | 文件 | 作用 |
 |------|------|
-| `.github/workflows/deploy.yml` | GitHub Actions 工作流：push 到 main 触发，先校验+测试，再部署 |
+| `.github/workflows/deploy.yml` | GitHub Actions 工作流：push 到 main 触发校验；提交信息含 `[deploy]` 或手动触发时部署 |
 | `deploy/deploy.sh` | 服务器端部署脚本：拉代码→校验→装依赖→优雅重启→健康检查→失败回滚 |
 | `deploy/check_integrity.py` | 部署前完整性校验：拦截被写坏/含乱码的源码文件（正是这次三个前端文件损坏那类问题） |
 
@@ -93,14 +93,14 @@ sudo -u deploy git config --global --add safe.directory /var/www/shuxue
 
 ## 完成后如何工作
 
-1. 你（或我）把代码 push 到 `main`。
+1. 你（或我）把代码 push 到 `main`；普通提交只做校验，需要上线时在提交信息加入 `[deploy]`。
 2. GitHub Actions 自动触发 `deploy.yml`：
    - **verify 阶段**：完整性校验 + 后端 `pytest`。任一失败，**不会部署**。
-   - **deploy 阶段**：在 ECS 上执行 `deploy.sh` → `git reset --hard origin/main` → 再次完整性校验 → 装依赖 → 重启 `shuxue` / `shuxue-worker` → `curl` 健康检查。
+   - **deploy 阶段**：仅在 `[deploy]` 或手动触发时执行；在 ECS 上备份本地差异 → 同步 `origin/main` → 校验 → 装依赖与运行配置 → 重启 `shuxue` / `shuxue-worker` → 检查 API、数据库和教师后台。
    - 健康检查失败 → **自动回滚**到上一版本并重启。
 3. 在 GitHub 仓库 **Actions** 页可看到每次部署的实时日志与成败。
 
-之后你就只管改代码 + push，上线全自动。
+这样仍然直接在 `main` 修改，但不会让每一个小提交立即进入生产环境。
 
 ---
 

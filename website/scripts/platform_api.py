@@ -8,7 +8,7 @@ from functools import wraps
 from pathlib import Path
 
 from flask import Blueprint, jsonify, request, session
-from sqlalchemy import select
+from sqlalchemy import select, text
 from werkzeug.utils import secure_filename
 
 from platform_db import (
@@ -56,6 +56,16 @@ def login_required(view):
     return wrapped
 
 
+def admin_required(view):
+    @wraps(view)
+    def wrapped(db, *args, **kwargs):
+        if not request.current_user or request.current_user.role != "admin":
+            return _json_error("permission denied", 403)
+        return view(db, *args, **kwargs)
+
+    return wrapped
+
+
 def csrf_required(view):
     @wraps(view)
     def wrapped(db, *args, **kwargs):
@@ -78,6 +88,18 @@ def _audit(db, user, action, target_type, target_id=None, detail=None):
             detail=detail or {},
         )
     )
+
+
+def _user_json(user):
+    return {
+        "id": user.id,
+        "email": user.email,
+        "name": user.display_name,
+        "role": user.role,
+        "is_active": user.is_active,
+        "created_at": user.created_at.isoformat(),
+        "last_login_at": user.last_login_at.isoformat() if user.last_login_at else None,
+    }
 
 
 @admin_api.post("/auth/login")
@@ -107,6 +129,124 @@ def login():
         )
     finally:
         SessionLocal.remove()
+
+
+def _valid_user_body(body, partial=False):
+    if not isinstance(body, dict):
+        return None, "payload must be an object"
+
+    payload = {}
+    if "display_name" in body:
+        display_name = str(body.get("display_name", "")).strip()
+        if not display_name:
+            return None, "display_name is required"
+        if len(display_name) > 80:
+            return None, "display_name is too long"
+        payload["display_name"] = display_name
+
+    if "role" in body:
+        role = str(body.get("role", "")).strip().lower() or "teacher"
+        if role not in {"admin", "teacher"}:
+            return None, "role must be admin or teacher"
+        payload["role"] = role
+
+    if not partial and "display_name" not in payload:
+        return None, "display_name is required"
+    if not partial and "role" not in payload:
+        payload["role"] = "teacher"
+
+    if "is_active" in body:
+        if not isinstance(body["is_active"], bool):
+            return None, "is_active must be boolean"
+        payload["is_active"] = body["is_active"]
+
+    if not partial and (not payload or "email" not in payload):
+        if "email" not in payload:
+            email = str(body.get("email", "")).strip().lower()
+            if not email or "@" not in email:
+                return None, "valid email is required"
+            payload["email"] = email
+        password = str(body.get("password", ""))
+        if len(password) < 12:
+            return None, "password must be at least 12 characters"
+        payload["password"] = password
+
+    return payload, None
+
+
+@admin_api.get("/admin/users")
+@login_required
+@admin_required
+def admin_users_list(db):
+    rows = db.scalars(select(User).order_by(User.created_at.asc())).all()
+    return jsonify({"items": [_user_json(row) for row in rows]})
+
+
+@admin_api.post("/admin/users")
+@login_required
+@admin_required
+@csrf_required
+def create_user(db):
+    payload, error = _valid_user_body(request.get_json(silent=True) or {})
+    if error:
+        return _json_error(error, 400)
+    if db.scalar(select(User).where(User.email == payload["email"])):
+        return _json_error("email already exists", 409)
+
+    user = User(email=payload["email"], display_name=payload["display_name"], role=payload["role"])
+    user.set_password(payload["password"])
+    db.add(user)
+    db.flush()
+    _audit(db, request.current_user, "user.create", "user", user.id, {"role": user.role})
+    db.commit()
+    return jsonify({"user": _user_json(user)}), 201
+
+
+@admin_api.patch("/admin/users/<user_id>")
+@login_required
+@admin_required
+@csrf_required
+def update_user(db, user_id):
+    user = db.get(User, user_id)
+    if not user:
+        return _json_error("user not found", 404)
+
+    payload, error = _valid_user_body(request.get_json(silent=True) or {}, partial=True)
+    if error:
+        return _json_error(error, 400)
+    if not payload:
+        return _json_error("no valid fields to update", 400)
+    if "display_name" in payload:
+        user.display_name = payload["display_name"]
+    if "role" in payload:
+        if request.current_user.id == user.id and payload["role"] != "admin":
+            return _json_error("cannot change your own role", 409)
+        user.role = payload["role"]
+    if "is_active" in payload:
+        if request.current_user.id == user.id and payload["is_active"] is False:
+            return _json_error("cannot deactivate your own account", 409)
+        user.is_active = payload["is_active"]
+    _audit(db, request.current_user, "user.update", "user", user.id, payload)
+    db.commit()
+    return jsonify({"user": _user_json(user)})
+
+
+@admin_api.post("/admin/users/<user_id>/reset-password")
+@login_required
+@admin_required
+@csrf_required
+def reset_user_password(db, user_id):
+    user = db.get(User, user_id)
+    if not user:
+        return _json_error("user not found", 404)
+    body = request.get_json(silent=True) or {}
+    password = str(body.get("password", ""))
+    if len(password) < 12:
+        return _json_error("password must be at least 12 characters", 400)
+    user.set_password(password)
+    _audit(db, request.current_user, "user.reset_password", "user", user.id)
+    db.commit()
+    return jsonify({"success": True})
 
 
 @admin_api.post("/auth/logout")
@@ -465,6 +605,25 @@ def public_questions():
             payload["id"] = row.id
             items.append(payload)
         return jsonify({"items": items})
+    finally:
+        SessionLocal.remove()
+
+
+@admin_api.get("/health")
+def health():
+    """进程存活检查，不访问数据库。"""
+    return jsonify({"status": "ok", "service": "shuxue-api"})
+
+
+@admin_api.get("/ready")
+def ready():
+    """就绪检查：确认应用可以访问正式数据存储。"""
+    db = SessionLocal()
+    try:
+        db.execute(text("SELECT 1"))
+        return jsonify({"status": "ready", "database": "ok"})
+    except Exception:
+        return jsonify({"status": "not_ready", "database": "unavailable"}), 503
     finally:
         SessionLocal.remove()
 

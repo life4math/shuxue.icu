@@ -19,14 +19,78 @@ def build_app(tmp_path):
     return server.app, sys.modules["platform_db"]
 
 
-def create_user(db_module, email="teacher@example.com", password="correct-horse-battery"):
-    user = db_module.User(email=email, display_name="测试教师", role="teacher")
+def create_user(db_module, email="teacher@example.com", password="correct-horse-battery", role="teacher"):
+    user = db_module.User(email=email, display_name="测试教师", role=role)
     user.set_password(password)
     db = db_module.SessionLocal()
     db.add(user)
     db.commit()
     db_module.SessionLocal.remove()
     return email, password
+
+
+def test_admin_only_user_management(tmp_path):
+    app, db_module = build_app(tmp_path)
+    admin_email, admin_password = create_user(db_module, "admin@example.com", "correct-admin-password", role="admin")
+    teacher_email, teacher_password = create_user(db_module, "teacher@example.com", "correct-teacher-password", role="teacher")
+
+    admin_client = app.test_client()
+    teacher_client = app.test_client()
+    admin_csrf = login(admin_client, admin_email, admin_password)
+    headers = {"X-CSRF-Token": admin_csrf, "Content-Type": "application/json"}
+
+    teacher_headers = {"X-CSRF-Token": login(teacher_client, teacher_email, teacher_password), "Content-Type": "application/json"}
+    blocked = teacher_client.post(
+        "/api/v1/admin/users",
+        json={"email": "blocked@example.com", "display_name": "非法用户", "password": "correct-blocked-password", "role": "teacher"},
+        headers=teacher_headers,
+    )
+    assert blocked.status_code == 403
+
+    created = admin_client.post(
+        "/api/v1/admin/users",
+        json={"email": "newteacher@example.com", "display_name": "新教师", "password": "correct-new-teacher", "role": "teacher"},
+        headers=headers,
+    )
+    assert created.status_code == 201
+    user_id = created.get_json()["user"]["id"]
+
+    list_result = admin_client.get("/api/v1/admin/users")
+    assert any(item["email"] == "newteacher@example.com" for item in list_result.get_json()["items"])
+
+    updated = admin_client.patch(
+        f"/api/v1/admin/users/{user_id}",
+        json={"display_name": "更新教师", "is_active": False},
+        headers=headers,
+    )
+    assert updated.status_code == 200
+    assert updated.get_json()["user"]["is_active"] is False
+
+    reset = admin_client.post(
+        f"/api/v1/admin/users/{user_id}/reset-password",
+        json={"password": "new-correct-password"},
+        headers=headers,
+    )
+    assert reset.status_code == 200
+
+
+def test_admin_cannot_disable_self(tmp_path):
+    app, db_module = build_app(tmp_path)
+    admin_email, admin_password = create_user(db_module, "admin@example.com", "correct-admin-password", role="admin")
+    client = app.test_client()
+    csrf = login(client, admin_email, admin_password)
+    headers = {"X-CSRF-Token": csrf, "Content-Type": "application/json"}
+
+    from sqlalchemy import select
+
+    db = db_module.SessionLocal()
+    admin_user_id = db.scalar(
+        select(db_module.User).where(db_module.User.email == admin_email)
+    ).id
+    db_module.SessionLocal.remove()
+
+    response = client.patch(f"/api/v1/admin/users/{admin_user_id}", json={"is_active": False}, headers=headers)
+    assert response.status_code == 409
 
 
 def login(client, email, password):
@@ -139,6 +203,19 @@ def test_knowledge_document_draft_submit_publish_and_public_read(tmp_path):
     public = client.get("/api/v1/public/knowledge/FUNC-01-01")
     assert public.status_code == 200
     assert public.get_json()["knowledge"]["payload"]["sections"][0]["items"][0]["math"] == "a\\in A"
+
+
+def test_health_and_readiness(tmp_path):
+    app, _ = build_app(tmp_path)
+    client = app.test_client()
+
+    health = client.get("/api/v1/health")
+    assert health.status_code == 200
+    assert health.get_json() == {"status": "ok", "service": "shuxue-api"}
+
+    ready = client.get("/api/v1/ready")
+    assert ready.status_code == 200
+    assert ready.get_json() == {"status": "ready", "database": "ok"}
 
 
 def bytes_io(content):

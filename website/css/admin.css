@@ -136,6 +136,35 @@
 .knowledge-admin-actions { display:flex; flex-wrap:wrap; gap:8px; }
 @media (max-width: 800px) { .knowledge-admin-layout { grid-template-columns:1fr; } }
 
+.user-admin-layout { display:grid; grid-template-columns:minmax(220px,.7fr) minmax(0,1.5fr); gap:20px; }
+.user-admin-list { max-height: 520px; overflow:auto; }
+.user-admin-form { display:grid; gap:14px; }
+.user-admin-form label { display:grid; gap:7px; color:var(--tx-2); font-size:12px; }
+.user-admin-form input,
+.user-admin-form select,
+.user-admin-form textarea {
+  width:100%;
+  box-sizing:border-box;
+  padding:10px 12px;
+  border:1px solid var(--line-strong);
+  background:var(--bg-0);
+  color:var(--tx-1);
+  outline:none;
+  font:13px/1.6 var(--font-body);
+}
+.user-admin-form input:focus,
+.user-admin-form select:focus { border-color:var(--accent); }
+.user-admin-form select { appearance:none; }
+.admin-checkbox input { width:auto; margin:0; }
+.admin-checkbox { display:flex; align-items:center; gap:8px; }
+.user-admin-actions { display:flex; flex-wrap:wrap; gap:8px; }
+@media (max-width: 800px) { .user-admin-layout { grid-template-columns:1fr; } }
+
+.user-admin-list .admin-row { cursor:pointer; }
+.user-admin-list .admin-row.selected { border-color: var(--accent); background: var(--accent-dim); }
+
+.admin-only[hidden] { display:none; }
+
 .review-card {
   margin-top: 20px;
 }

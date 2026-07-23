@@ -1,6 +1,6 @@
 name: Deploy to Alibaba Cloud ECS
 
-# 触发：推送到 main 自动部署；也可在 Actions 页面手动触发。
+# 推送 main 始终执行校验；提交信息含 [deploy] 或手动触发时才部署生产。
 on:
   push:
     branches: [main]
@@ -30,6 +30,7 @@ jobs:
 
   # ── 阶段二：部署（校验通过后，更新生产目录并优雅重启）──
   deploy:
+    if: github.event_name == 'workflow_dispatch' || contains(github.event.head_commit.message, '[deploy]')
     needs: verify
     runs-on: [self-hosted, shuxue]
     steps:

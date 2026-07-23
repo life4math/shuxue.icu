@@ -78,12 +78,12 @@ def main():
                 errors.append(f"{rel}: 缺少预期结构标记 {needle!r}（可能被截断或损坏）")
 
     if errors:
-        print("✗ 完整性校验未通过：", file=sys.stderr)
+        print("[ERROR] 完整性校验未通过：", file=sys.stderr)
         for item in errors:
             print("   -", item, file=sys.stderr)
         sys.exit(1)
 
-    print("✓ 完整性校验通过：所有源码文本文件为合法 UTF-8，关键前端文件结构完整。")
+    print("[OK] 完整性校验通过：所有源码文本文件为合法 UTF-8，关键前端文件结构完整。")
 
 
 if __name__ == "__main__":

@@ -61,6 +61,13 @@ cd website/scripts
 python init_platform.py --email admin@example.com
 ```
 
+重置已有管理员密码（例如 `87707817@qq.com`）：
+
+```bash
+cd website/scripts
+python init_platform.py --email 87707817@qq.com --reset
+```
+
 AI 任务 Worker：
 
 ```bash
@@ -132,6 +139,16 @@ python server.py
 ## 部署
 
 ### 阿里云 ECS (Alibaba Cloud Linux 3)
+
+推送到 `main` 会自动执行完整性校验和测试。只有提交信息包含 `[deploy]`
+（例如 `git commit -m "[deploy] 完成阶段升级"`），或在 GitHub Actions 页面手动
+触发工作流时，才会更新生产环境。部署过程会备份服务器上的跟踪文件差异，安装
+Web/Worker/Nginx 配置，并检查：
+
+- `/api/v1/health`：API 进程存活。
+- `/api/v1/ready`：API 与数据库就绪。
+- `admin.shuxue.icu/admin.html`：教师后台可访问。
+- `shuxue` 与 `shuxue-worker`：两个 systemd 服务均正常运行。
 
 项目内置一键部署脚本，SSH 登录服务器后执行：
 

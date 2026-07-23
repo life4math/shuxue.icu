@@ -84,9 +84,41 @@
           </form>
         </div>
       </article>
+
+      <article id="users-admin-card" class="admin-card admin-only" hidden>
+        <div class="admin-card-heading">
+          <div>
+            <p class="admin-kicker">05 · USERS</p>
+            <h2>账号注册与管理</h2>
+          </div>
+          <span id="user-admin-status" class="admin-status" aria-live="polite"></span>
+        </div>
+        <p class="admin-muted">仅管理员可新增账号、冻结账号、修改角色或重置密码。</p>
+        <div class="user-admin-layout">
+          <div id="user-admin-list" class="admin-list"></div>
+          <form id="user-admin-form" class="user-admin-form">
+            <input id="user-admin-id" type="hidden">
+            <label>邮箱<input id="user-admin-email" type="email" maxlength="254" required></label>
+            <label>姓名<input id="user-admin-name" type="text" maxlength="80" required></label>
+            <label>密码（仅新建或重置时必填）<input id="user-admin-password" type="password" minlength="12"></label>
+            <label>角色
+              <select id="user-admin-role">
+                <option value="teacher">teacher</option>
+                <option value="admin">admin</option>
+              </select>
+            </label>
+            <label class="admin-checkbox"><input id="user-admin-active" type="checkbox" checked> 启用账号</label>
+            <div class="user-admin-actions">
+              <button class="btn-accent" type="submit">保存</button>
+              <button class="btn-ghost" type="button" id="user-admin-clear">清空</button>
+              <button class="btn-ghost" type="button" id="user-admin-password-reset">仅重置密码</button>
+            </div>
+          </form>
+        </div>
+      </article>
     </section>
   </main>
 
-  <script src="js/admin.js?v=20260723-admin-2"></script>
+  <script src="js/admin.js?v=20260723-admin-3"></script>
 </body>
 </html>
