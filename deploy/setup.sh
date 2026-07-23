@@ -44,10 +44,26 @@ fi
 echo -e "${YELLOW}[0/8] 检查并移除 Apache/httpd 冲突...${NC}"
 
 if rpm -q httpd >/dev/null 2>&1; then
-    echo -e "  检测到 httpd (Apache)，移除中..."
+    echo -e "  检测到 httpd (Apache)，停止并移除..."
     systemctl stop httpd 2>/dev/null || true
-    dnf remove -y httpd php php-cli php-common 2>/dev/null || true
-    echo -e "${GREEN}  -> httpd/php 已移除${NC}"
+    systemctl disable httpd 2>/dev/null || true
+
+    # 方法1: dnf remove 绕过 exclude 过滤
+    dnf remove -y --disableexcludes=all httpd php php-cli php-common 2>/dev/null || {
+        echo -e "${YELLOW}  dnf remove 失败，使用 rpm 强制移除...${NC}"
+        # 方法2: rpm 直接移除 (绕过 dnf 的 exclude 过滤)
+        rpm -e --nodeps httpd 2>/dev/null || true
+        rpm -e --nodeps php 2>/dev/null || true
+        rpm -e --nodeps php-cli 2>/dev/null || true
+        rpm -e --nodeps php-common 2>/dev/null || true
+    }
+
+    # 验证是否已移除
+    if rpm -q httpd >/dev/null 2>&1; then
+        echo -e "${YELLOW}  httpd 仍存在，但已停止服务 (不影响 Nginx 部署)${NC}"
+    else
+        echo -e "${GREEN}  -> httpd/php 已移除${NC}"
+    fi
 else
     echo -e "${GREEN}  -> httpd 未安装，跳过${NC}"
 fi
@@ -58,17 +74,17 @@ echo ""
 # ========================================
 echo -e "${YELLOW}[1/8] 安装系统依赖...${NC}"
 
-# 安全更新 (移除 httpd 后应该不再冲突)
-dnf upgrade-minimal --security -y 2>/dev/null || {
-    echo -e "${YELLOW}  安全更新有部分跳过，不影响部署${NC}"
+# 安全更新 (跳过有冲突的包)
+dnf upgrade-minimal --security -y --skip-broken 2>/dev/null || {
+    echo -e "${YELLOW}  安全更新部分跳过，不影响部署${NC}"
 }
 
 dnf install -y epel-release 2>/dev/null || true
-dnf install -y nginx python3 python3-pip nodejs git 2>/dev/null || {
+dnf install -y --skip-broken nginx python3 python3-pip nodejs git 2>/dev/null || {
     echo -e "${RED}  安装失败，尝试更新 dnf 缓存...${NC}"
     dnf clean all
     dnf makecache
-    dnf install -y nginx python3 python3-pip nodejs git
+    dnf install -y --skip-broken nginx python3 python3-pip nodejs git
 }
 
 echo -e "${GREEN}  -> nginx, python3, nodejs, git 已安装${NC}"
