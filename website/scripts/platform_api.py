@@ -19,6 +19,7 @@ from platform_db import (
     SessionLocal,
     UploadFile,
     User,
+    KnowledgeDocument,
     init_database,
 )
 
@@ -259,6 +260,149 @@ def _review_json(item):
     }
 
 
+def _knowledge_json(item):
+    return {
+        "id": item.id,
+        "node_id": item.node_id,
+        "title": item.title,
+        "status": item.status,
+        "version": item.version,
+        "payload": item.payload,
+        "updated_at": item.updated_at.isoformat() if item.updated_at else None,
+        "published_at": item.published_at.isoformat() if item.published_at else None,
+    }
+
+
+def _valid_knowledge_payload(body):
+    if not isinstance(body, dict):
+        return None, "payload must be an object"
+    title = str(body.get("title", "")).strip()[:160]
+    sections = body.get("sections")
+    if not title or not isinstance(sections, list) or not sections:
+        return None, "title and at least one section are required"
+    normalized = []
+    for section in sections[:100]:
+        if not isinstance(section, dict):
+            return None, "section must be an object"
+        section_title = str(section.get("title", "")).strip()[:160]
+        items = section.get("items")
+        if not section_title or not isinstance(items, list):
+            return None, "section title and items are required"
+        normalized_items = []
+        for item in items[:100]:
+            if not isinstance(item, dict):
+                return None, "item must be an object"
+            clean = {}
+            for key in ("text", "math", "suffixMath"):
+                value = item.get(key)
+                if value is not None and str(value).strip():
+                    clean[key] = str(value).strip()[:4000]
+            if not clean:
+                return None, "each item must contain text or KaTeX"
+            normalized_items.append(clean)
+        if not normalized_items:
+            return None, "each section needs at least one item"
+        normalized.append({"title": section_title, "items": normalized_items})
+    return {"title": title, "sections": normalized}, None
+
+
+@admin_api.get("/public/knowledge/<node_id>")
+def public_knowledge(node_id):
+    db = SessionLocal()
+    try:
+        item = db.scalar(select(KnowledgeDocument).where(
+            KnowledgeDocument.node_id == node_id,
+            KnowledgeDocument.status == "published",
+        ))
+        if not item:
+            return _json_error("knowledge document not found", 404)
+        return jsonify({"knowledge": _knowledge_json(item)})
+    finally:
+        SessionLocal.remove()
+
+
+@admin_api.get("/public/knowledge")
+def public_knowledge_list():
+    db = SessionLocal()
+    try:
+        rows = db.scalars(select(KnowledgeDocument).where(KnowledgeDocument.status == "published")).all()
+        return jsonify({"items": [_knowledge_json(row) for row in rows]})
+    finally:
+        SessionLocal.remove()
+
+
+@admin_api.get("/admin/knowledge")
+@login_required
+def admin_knowledge_list(db):
+    rows = db.scalars(select(KnowledgeDocument).order_by(KnowledgeDocument.node_id)).all()
+    return jsonify({"items": [_knowledge_json(row) for row in rows]})
+
+
+@admin_api.put("/admin/knowledge/<node_id>")
+@login_required
+@csrf_required
+def save_knowledge(db, node_id):
+    payload, error = _valid_knowledge_payload(request.get_json(silent=True) or {})
+    if error:
+        return _json_error(error, 400)
+    item = db.scalar(select(KnowledgeDocument).where(KnowledgeDocument.node_id == node_id))
+    if not item:
+        item = KnowledgeDocument(
+            node_id=node_id,
+            title=payload["title"],
+            payload=payload,
+            status="draft",
+            created_by=request.current_user.id,
+            updated_by=request.current_user.id,
+        )
+        db.add(item)
+    else:
+        if item.status == "pending_review":
+            return _json_error("pending document must be reviewed before editing", 409)
+        item.title = payload["title"]
+        item.payload = payload
+        item.version += 1
+        item.status = "draft"
+        item.updated_by = request.current_user.id
+    _audit(db, request.current_user, "knowledge.save", "knowledge", node_id, {"version": item.version})
+    db.commit()
+    return jsonify({"knowledge": _knowledge_json(item)})
+
+
+@admin_api.post("/admin/knowledge/<node_id>/submit")
+@login_required
+@csrf_required
+def submit_knowledge(db, node_id):
+    item = db.scalar(select(KnowledgeDocument).where(KnowledgeDocument.node_id == node_id))
+    if not item:
+        return _json_error("knowledge document not found", 404)
+    if item.status not in {"draft", "rejected"}:
+        return _json_error("only draft or rejected documents can be submitted", 409)
+    item.status = "pending_review"
+    item.updated_by = request.current_user.id
+    _audit(db, request.current_user, "knowledge.submit", "knowledge", node_id)
+    db.commit()
+    return jsonify({"knowledge": _knowledge_json(item)})
+
+
+@admin_api.post("/admin/knowledge/<node_id>/publish")
+@login_required
+@csrf_required
+def publish_knowledge(db, node_id):
+    item = db.scalar(select(KnowledgeDocument).where(KnowledgeDocument.node_id == node_id))
+    if not item:
+        return _json_error("knowledge document not found", 404)
+    if item.status not in {"pending_review", "draft"}:
+        return _json_error("only draft or pending documents can be published", 409)
+    item.status = "published"
+    item.published_by = request.current_user.id
+    item.published_at = datetime.utcnow()
+    item.updated_by = request.current_user.id
+    _audit(db, request.current_user, "knowledge.publish", "knowledge", node_id, {"version": item.version})
+    db.commit()
+    return jsonify({"knowledge": _knowledge_json(item)})
+
+
 @admin_api.post("/admin/reviews/<review_id>/approve")
 @login_required
 @csrf_required
@@ -337,4 +481,3 @@ def configure_platform(app):
     if not app.config["SECRET_KEY"]:
         raise RuntimeError("SHUXUE_SESSION_SECRET or SHUXUE_ADMIN_TOKEN must be configured")
     app.register_blueprint(admin_api)
-

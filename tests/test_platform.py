@@ -114,6 +114,33 @@ def test_public_questions_hide_answer_and_analysis(tmp_path):
     assert "analysis" not in payload
 
 
+def test_knowledge_document_draft_submit_publish_and_public_read(tmp_path):
+    app, db_module = build_app(tmp_path)
+    email, password = create_user(db_module)
+    client = app.test_client()
+    csrf = login(client, email, password)
+    headers = {"X-CSRF-Token": csrf, "Content-Type": "application/json"}
+    payload = {
+        "title": "集合",
+        "sections": [{"title": "定义", "items": [{"text": "集合是确定对象的总体。", "math": "a\\in A"}]}],
+    }
+
+    saved = client.put("/api/v1/admin/knowledge/FUNC-01-01", json=payload, headers=headers)
+    assert saved.status_code == 200
+    assert saved.get_json()["knowledge"]["status"] == "draft"
+    assert client.get("/api/v1/public/knowledge/FUNC-01-01").status_code == 404
+
+    submitted = client.post("/api/v1/admin/knowledge/FUNC-01-01/submit", headers={"X-CSRF-Token": csrf})
+    assert submitted.status_code == 200
+    assert submitted.get_json()["knowledge"]["status"] == "pending_review"
+
+    published = client.post("/api/v1/admin/knowledge/FUNC-01-01/publish", headers={"X-CSRF-Token": csrf})
+    assert published.status_code == 200
+    public = client.get("/api/v1/public/knowledge/FUNC-01-01")
+    assert public.status_code == 200
+    assert public.get_json()["knowledge"]["payload"]["sections"][0]["items"][0]["math"] == "a\\in A"
+
+
 def bytes_io(content):
     from io import BytesIO
 

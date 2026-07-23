@@ -59,9 +59,34 @@
         </div>
         <div id="review-list" class="admin-list"></div>
       </article>
+
+      <article class="admin-card knowledge-admin-card">
+        <div class="admin-card-heading">
+          <div>
+            <p class="admin-kicker">04 · KNOWLEDGE CMS</p>
+            <h2>知识点内容管理</h2>
+          </div>
+          <span id="knowledge-admin-status" class="admin-status" aria-live="polite"></span>
+        </div>
+        <p class="admin-muted">编辑后先保存草稿，再提交审核或直接发布。正文中的 math 和 suffixMath 使用 KaTeX 源码。</p>
+        <div class="knowledge-admin-layout">
+          <div id="knowledge-admin-list" class="admin-list"></div>
+          <form id="knowledge-admin-form" class="knowledge-admin-form">
+            <input id="knowledge-admin-node-id" type="hidden">
+            <label>标题<input id="knowledge-admin-title" type="text" maxlength="160" required></label>
+            <label>正文结构（JSON）<textarea id="knowledge-admin-payload" rows="18" spellcheck="false" required></textarea></label>
+            <div class="knowledge-admin-actions">
+              <button class="btn-ghost" type="button" id="knowledge-admin-preview">校验 JSON</button>
+              <button class="btn-accent" type="submit">保存草稿</button>
+              <button class="btn-ghost" type="button" id="knowledge-admin-submit">提交审核</button>
+              <button class="btn-accent" type="button" id="knowledge-admin-publish">发布</button>
+            </div>
+          </form>
+        </div>
+      </article>
     </section>
   </main>
 
-  <script src="js/admin.js?v=20260723-admin-1"></script>
+  <script src="js/admin.js?v=20260723-admin-2"></script>
 </body>
 </html>

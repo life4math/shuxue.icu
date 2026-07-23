@@ -106,6 +106,25 @@ class PublishedContent(Base):
     updated_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow, onupdate=utcnow)
 
 
+class KnowledgeDocument(Base):
+    """知识点的可编辑版本；正文结构保存在 payload JSON 中。"""
+
+    __tablename__ = "knowledge_documents"
+
+    id: Mapped[str] = mapped_column(String(40), primary_key=True, default=lambda: new_id("kdoc"))
+    node_id: Mapped[str] = mapped_column(String(40), unique=True, index=True)
+    title: Mapped[str] = mapped_column(String(160))
+    status: Mapped[str] = mapped_column(String(24), default="draft", index=True)
+    version: Mapped[int] = mapped_column(Integer, default=1)
+    payload: Mapped[dict] = mapped_column(JSON)
+    created_by: Mapped[str] = mapped_column(ForeignKey("users.id"))
+    updated_by: Mapped[str] = mapped_column(ForeignKey("users.id"))
+    published_by: Mapped[Optional[str]] = mapped_column(ForeignKey("users.id"), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow, onupdate=utcnow)
+    published_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+
+
 class AuditLog(Base):
     __tablename__ = "audit_logs"
 

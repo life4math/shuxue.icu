@@ -94,8 +94,83 @@ document.getElementById('upload-form').addEventListener('submit', async event =>
 document.getElementById('refresh-button').addEventListener('click', refreshConsole);
 
 async function refreshConsole() {
-  await Promise.all([loadJobs(), loadReviews()]);
+  await Promise.all([loadJobs(), loadReviews(), loadKnowledgeDocuments()]);
 }
+
+let knowledgeDocuments = [];
+
+async function loadKnowledgeDocuments() {
+  const target = document.getElementById('knowledge-admin-list');
+  if (!target) return;
+  try {
+    const data = await api('/admin/knowledge');
+    knowledgeDocuments = data.items || [];
+    target.replaceChildren(...knowledgeDocuments.map(renderKnowledgeDocument));
+    if (!knowledgeDocuments.length) target.textContent = '暂无数据库知识正文，请先运行 seed_knowledge.py';
+    if (knowledgeDocuments.length && !document.getElementById('knowledge-admin-node-id').value) {
+      selectKnowledgeDocument(knowledgeDocuments[0].node_id);
+    }
+  } catch (err) {
+    target.textContent = err.message;
+  }
+}
+
+function renderKnowledgeDocument(item) {
+  const row = document.createElement('div');
+  row.className = 'admin-row';
+  row.dataset.nodeId = item.node_id;
+  row.addEventListener('click', () => selectKnowledgeDocument(item.node_id));
+  const heading = document.createElement('strong');
+  heading.textContent = item.title || item.node_id;
+  const meta = document.createElement('div');
+  meta.className = 'admin-row-meta';
+  meta.append(document.createTextNode(item.node_id), document.createTextNode(item.status));
+  row.append(heading, meta);
+  return row;
+}
+
+function selectKnowledgeDocument(nodeId) {
+  const item = knowledgeDocuments.find(entry => entry.node_id === nodeId);
+  if (!item) return;
+  document.getElementById('knowledge-admin-node-id').value = item.node_id;
+  document.getElementById('knowledge-admin-title').value = item.title || '';
+  document.getElementById('knowledge-admin-payload').value = JSON.stringify(item.payload || {}, null, 2);
+  document.querySelectorAll('#knowledge-admin-list .admin-row').forEach(row => {
+    row.classList.toggle('selected', row.dataset.nodeId === nodeId);
+  });
+}
+
+function readKnowledgeForm() {
+  const payload = JSON.parse(document.getElementById('knowledge-admin-payload').value);
+  payload.title = document.getElementById('knowledge-admin-title').value.trim();
+  return payload;
+}
+
+async function knowledgeMutation(action) {
+  const nodeId = document.getElementById('knowledge-admin-node-id').value;
+  if (!nodeId) return;
+  const status = document.getElementById('knowledge-admin-status');
+  try {
+    const data = action === 'save'
+      ? await api(`/admin/knowledge/${encodeURIComponent(nodeId)}`, { method: 'PUT', headers: {'Content-Type':'application/json'}, body: JSON.stringify(readKnowledgeForm()) })
+      : await api(`/admin/knowledge/${encodeURIComponent(nodeId)}/${action}`, { method: 'POST', headers: {'Content-Type':'application/json'}, body: '{}' });
+    status.textContent = `已${action === 'save' ? '保存草稿' : action === 'submit' ? '提交审核' : '发布'} · ${data.knowledge.status}`;
+    await loadKnowledgeDocuments();
+  } catch (err) {
+    status.textContent = `失败：${err.message}`;
+  }
+}
+
+document.getElementById('knowledge-admin-form')?.addEventListener('submit', event => {
+  event.preventDefault(); knowledgeMutation('save');
+});
+document.getElementById('knowledge-admin-preview')?.addEventListener('click', () => {
+  const status = document.getElementById('knowledge-admin-status');
+  try { readKnowledgeForm(); status.textContent = 'JSON 结构有效'; }
+  catch (_) { status.textContent = 'JSON 格式错误，请检查公式字符串和逗号'; }
+});
+document.getElementById('knowledge-admin-submit')?.addEventListener('click', () => knowledgeMutation('submit'));
+document.getElementById('knowledge-admin-publish')?.addEventListener('click', () => knowledgeMutation('publish'));
 
 async function loadJobs() {
   const target = document.getElementById('job-list');
