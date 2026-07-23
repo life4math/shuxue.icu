@@ -497,6 +497,7 @@ function renderStudentDetail() {
     charts.studentTrend = initStudentTrendChart(s);
     charts.diffBar = initDifficultyBarChart(s);
   }, 100);
+
   // 知识点掌握度列表
   renderMasteryList(s);
 
@@ -546,6 +547,7 @@ function renderRecommendations(s) {
     const pOrder = { P0: 0, P1: 1, P2: 2 };
     return pOrder[a.priority] - pOrder[b.priority] || a.score - b.score;
   });
+
   container.innerHTML = sorted.map((wp, i) => {
     const suggestions = {
       P0: '立即进行专项训练，从基础题开始，逐步提升难度',
@@ -595,6 +597,7 @@ function initDashboard() {
 
   // 高频错题表格（使用 students 数据生成）
   renderErrorTable();
+
   // 初始化上传区
   setupUploadZone();
   renderPipeline('idle');
@@ -994,6 +997,7 @@ function _generateMockResults(fileItem) {
     }
   ];
 }
+
 function renderResultsList() {
   const container = document.getElementById('results-list');
   container.innerHTML = extractedResults.map((item, i) => {
@@ -1393,6 +1397,7 @@ function initBlog() {
 function initAboutInfo() {
   // 静态页面，无需动态逻辑
 }
+
 function populateBlogFilters() {
   const tagSelect = document.getElementById('blog-tag-filter');
   const catSelect = document.getElementById('blog-cat-filter');
