@@ -41,7 +41,7 @@ log() { echo -e "[deploy] $*"; }
 cd "$PROJECT_DIR"
 git config --global --add safe.directory "$PROJECT_DIR" 2>/dev/null || true
 
-# ── 记录当前版本用于回滚 ───────────────────────────────
+# ── 记录当前版本用于回滚 ──────────────────────────────
 PREV="$(git rev-parse HEAD)"
 log "当前版本: $PREV"
 
@@ -73,7 +73,7 @@ log "目标版本: $NEW"
 sync_deps() {
     # shellcheck disable=SC1091
     source "$VENV_DIR/bin/activate"
-    pip install -q -r requirements.txt
+    pip install -q --require-hashes -r requirements-py38.lock
     deactivate 2>/dev/null || true
 }
 
@@ -221,20 +221,23 @@ rollback() {
 }
 
 # ── 部署前完整性校验（拦截损坏文件）────────────────────
-if ! python3.8 deploy/check_integrity.py; then
+if ! python3.8 deploy/check_integrity.py \
+    || ! python3.8 deploy/check_frontend.py \
+    || ! find website/js -maxdepth 1 -name '*.js' ! -name '*.min.js' -print0 \
+        | xargs -0 -n1 node --check; then
     log "完整性校验未通过，恢复到部署前版本 $PREV，中止部署。"
     git reset --hard "$PREV"
     exit 1
 fi
 
-# ── 同步依赖、运行配置并重启 ────────────────────────
+# ── 同步依赖、运行配置并重启 ─────────────────────────
 if ! sync_deps || ! ensure_environment_secrets || ! secure_permissions \
     || ! install_services || ! install_nginx_config || ! restart_services; then
     rollback
     exit 1
 fi
 
-# ── 部署后健康检查 ────────────────────────────────────
+# ── 部署后健康检查 ───────────────────────────────────
 if health_ok 0; then
     log "部署成功，API、数据库、后台页面和 Worker 均通过检查: $NEW"
     exit 0

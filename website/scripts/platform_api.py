@@ -3,7 +3,7 @@
 import hashlib
 import os
 import secrets
-from datetime import datetime, timedelta
+from datetime import timedelta
 from functools import wraps
 from pathlib import Path
 
@@ -24,6 +24,7 @@ from platform_db import (
     KnowledgeDocument,
     ensure_published_knowledge_snapshots,
     init_database,
+    utcnow,
 )
 
 
@@ -189,7 +190,7 @@ def login():
 
     db = SessionLocal()
     try:
-        now = datetime.utcnow()
+        now = utcnow()
         ip = _client_ip()
         account_key = _login_key("account", email)
         ip_key = _login_key("ip", ip)
@@ -670,7 +671,7 @@ def publish_knowledge(db, node_id):
         return _json_error("only draft or pending documents can be published", 409)
     item.status = "published"
     item.published_by = request.current_user.id
-    item.published_at = datetime.utcnow()
+    item.published_at = utcnow()
     item.updated_by = request.current_user.id
     snapshot = db.get(PublishedKnowledge, node_id)
     if not snapshot:
@@ -704,7 +705,7 @@ def approve_review(db, review_id):
     )
     item.status = "approved"
     item.reviewed_by = request.current_user.id
-    item.reviewed_at = datetime.utcnow()
+    item.reviewed_at = utcnow()
     db.add(published)
     db.flush()
     _audit(db, request.current_user, "review.approve", "review_item", item.id, {"published_id": published.id})
@@ -725,7 +726,7 @@ def reject_review(db, review_id):
     item.status = "rejected"
     item.review_notes = str(body.get("notes", ""))[:2000]
     item.reviewed_by = request.current_user.id
-    item.reviewed_at = datetime.utcnow()
+    item.reviewed_at = utcnow()
     _audit(db, request.current_user, "review.reject", "review_item", item.id)
     db.commit()
     return jsonify({"success": True})
@@ -772,9 +773,10 @@ def ready():
 
 
 def configure_platform(app):
-    init_database()
-    session_secret = os.environ.get("SHUXUE_SESSION_SECRET", "").strip()
     environment = os.environ.get("SHUXUE_ENV", "production").strip().lower()
+    if environment != "production" or os.environ.get("SHUXUE_AUTO_CREATE_SCHEMA") == "1":
+        init_database()
+    session_secret = os.environ.get("SHUXUE_SESSION_SECRET", "").strip()
     if not session_secret:
         raise RuntimeError("SHUXUE_SESSION_SECRET must be configured")
     if environment == "production" and len(session_secret) < 32:

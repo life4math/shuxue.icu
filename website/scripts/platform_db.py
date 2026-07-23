@@ -2,7 +2,7 @@
 
 import os
 import uuid
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Optional
 
 from sqlalchemy import Boolean, DateTime, ForeignKey, Integer, JSON, String, Text, create_engine
@@ -11,7 +11,8 @@ from werkzeug.security import check_password_hash, generate_password_hash
 
 
 def utcnow():
-    return datetime.utcnow()
+    """返回数据库兼容的无时区 UTC；避免 datetime.utcnow() 弃用。"""
+    return datetime.now(timezone.utc).replace(tzinfo=None)
 
 
 def new_id(prefix):

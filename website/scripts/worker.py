@@ -1,12 +1,11 @@
 """处理排队中的 AI 提取任务；可由 systemd 常驻运行。"""
 
 import time
-from datetime import datetime
 from pathlib import Path
 
 from sqlalchemy import select
 
-from platform_db import AIJob, ReviewItem, SessionLocal, UploadFile, init_database
+from platform_db import AIJob, ReviewItem, SessionLocal, UploadFile, init_database, utcnow
 from server import process_file
 
 
@@ -21,7 +20,7 @@ def process_next_job():
             return False
         job.status = "parsing"
         job.progress = 10
-        job.started_at = datetime.utcnow()
+        job.started_at = utcnow()
         job.attempt_count += 1
         job.upload.status = "processing"
         db.commit()
@@ -49,7 +48,7 @@ def process_next_job():
                 )
             job.status = "pending_review"
             job.progress = 100
-            job.finished_at = datetime.utcnow()
+            job.finished_at = utcnow()
             job.upload.status = "processed"
             db.commit()
         except Exception as exc:
@@ -57,7 +56,7 @@ def process_next_job():
             job = db.get(AIJob, job.id)
             job.status = "failed"
             job.error_message = str(exc)[:2000]
-            job.finished_at = datetime.utcnow()
+            job.finished_at = utcnow()
             upload = db.get(UploadFile, job.upload_id)
             upload.status = "failed"
             db.commit()

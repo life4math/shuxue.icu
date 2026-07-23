@@ -1,6 +1,7 @@
 [Unit]
 Description=shuxue.icu AI Task Worker
 After=network.target postgresql.service shuxue.service
+Requires=shuxue.service
 
 [Service]
 User=nginx

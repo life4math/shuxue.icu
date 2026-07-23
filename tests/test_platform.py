@@ -1,9 +1,10 @@
 import importlib
 import os
+import subprocess
 import sys
 
 import pytest
-from sqlalchemy import select
+from sqlalchemy import create_engine, inspect, select, text
 
 
 ROOT = os.path.dirname(os.path.dirname(__file__))
@@ -34,6 +35,29 @@ def create_user(db_module, email="teacher@example.com", password="correct-horse-
     db.commit()
     db_module.SessionLocal.remove()
     return email, password
+
+
+def test_alembic_baseline_creates_and_versions_schema(tmp_path):
+    database_path = tmp_path / "migration.db"
+    environment = os.environ.copy()
+    environment["SHUXUE_DATABASE_URL"] = f"sqlite:///{database_path}"
+    result = subprocess.run(
+        [sys.executable, os.path.join(SCRIPT_DIR, "migrate.py")],
+        cwd=ROOT,
+        env=environment,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert result.returncode == 0, result.stderr
+
+    engine = create_engine(f"sqlite:///{database_path}")
+    tables = set(inspect(engine).get_table_names())
+    assert {"users", "knowledge_documents", "published_knowledge", "alembic_version"} <= tables
+    with engine.connect() as connection:
+        assert connection.execute(text("SELECT version_num FROM alembic_version")).scalar_one() == (
+            "0001_platform_baseline"
+        )
 
 
 def test_admin_only_user_management(tmp_path):

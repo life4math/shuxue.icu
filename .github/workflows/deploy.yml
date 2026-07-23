@@ -23,13 +23,18 @@ jobs:
         uses: actions/checkout@v4
 
       - name: 前端文件完整性校验
-        run: python3.8 deploy/check_integrity.py
+        run: |
+          python3.8 deploy/check_integrity.py
+          python3.8 deploy/check_frontend.py
+          find website/js -maxdepth 1 -name '*.js' ! -name '*.min.js' -print0 \
+            | xargs -0 -n1 node --check
 
       - name: 后端单元测试
         run: |
           python3.8 -m venv "$RUNNER_TEMP/shuxue-ci-venv"
           "$RUNNER_TEMP/shuxue-ci-venv/bin/python" -m pip install -q --upgrade "pip<26"
-          "$RUNNER_TEMP/shuxue-ci-venv/bin/python" -m pip install -q -r requirements.txt
+          "$RUNNER_TEMP/shuxue-ci-venv/bin/python" -m pip install -q \
+            --require-hashes -r requirements-py38.lock
           cd website/scripts
           "$RUNNER_TEMP/shuxue-ci-venv/bin/python" -m pytest -q ../../tests
 

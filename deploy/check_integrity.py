@@ -22,6 +22,7 @@ ROOT = Path(__file__).resolve().parent.parent
 TEXT_SUFFIXES = {
     ".html", ".js", ".css", ".py", ".json",
     ".md", ".conf", ".service", ".sh", ".txt", ".yml", ".yaml",
+    ".ini", ".mako", ".lock",
 }
 # 第三方压缩资源跳过（本身即最小化文本，不在维护范围）
 SKIP_NAME_SUFFIXES = (".min.js", ".min.css")
@@ -31,6 +32,7 @@ STRUCTURE_CHECKS = {
     "website/index.html": ["<!DOCTYPE html", "</html>", 'src="js/app.js'],
     "website/js/app.js": ["function initPage"],
     "website/css/style.css": [":root"],
+    "requirements-py38.lock": ["--hash=sha256:"],
 }
 
 

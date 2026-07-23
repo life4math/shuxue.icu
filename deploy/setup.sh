@@ -178,11 +178,8 @@ echo -e "${YELLOW}[3/8] 创建 Python 3.8 虚拟环境...${NC}"
 # 使用 python3.8 创建 venv (python39 模块不存在，系统只有 27/36/38)
 python3.8 -m venv "$VENV_DIR"
 source "$VENV_DIR/bin/activate"
-pip install --upgrade pip -q
-pip install -r "$PROJECT_DIR/requirements.txt" -q || {
-    echo -e "${YELLOW}  requirements.txt 安装失败，尝试手动安装...${NC}"
-    pip install flask gunicorn pdfplumber mammoth openai SQLAlchemy psycopg2-binary pytest
-}
+pip install --upgrade "pip<26" -q
+pip install --require-hashes -r "$PROJECT_DIR/requirements-py38.lock" -q
 
 echo -e "${GREEN}  -> Python 依赖安装完成${NC}"
 python -c "import flask; print(f'  Flask {flask.__version__}')"
@@ -276,6 +273,7 @@ Environment="SHUXUE_PORT=8000"
 Environment="SHUXUE_NODE_PATH=/usr/bin/node"
 Environment="SHUXUE_ENV=production"
 EnvironmentFile=-/etc/shuxue/shuxue.env
+ExecStartPre=/var/www/shuxue/venv/bin/python migrate.py
 ExecStartPre=/var/www/shuxue/venv/bin/python seed_knowledge.py --bootstrap-missing
 ExecStart=/var/www/shuxue/venv/bin/gunicorn -w 2 -b 127.0.0.1:8000 server:app
 Restart=always
