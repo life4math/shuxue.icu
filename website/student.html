@@ -377,7 +377,297 @@ body {
   padding: 8px 18px; border: 1px solid var(--accent-line); z-index: 100; display: none;
 }
 
-/* KaTeX…3697 tokens truncated…ENDED]</span>
+/* KaTeX 复位 */
+.katex { font-family: KaTeX_Main, "Times New Roman", serif !important; }
+</style>
+</head>
+<body>
+
+<!-- 左侧设计说明 -->
+<div class="prototype-side">
+  <div class="side-brand-wrap" aria-label="选择网站配色">
+    <h1 class="side-brand">shuxue<span class="proto">.icu</span></h1>
+    <div class="side-brand-dropdown" id="side-brand-dropdown"></div>
+  </div>
+  <div class="brand">STUDENT v1.0</div>
+  <div class="sub">右侧手机可真实交互：点击底部 Tab 切换模块，刷题页可完整作答并查看解析。</div>
+
+  <div class="side-note">
+    <h4>01 · QUIZ CENTER</h4>
+    <p>三种模式：智能推荐（基于薄弱点出题）、专项突破（按知识点）、错题重练（错题本驱动）。即做即改，解析即时呈现。</p>
+  </div>
+  <div class="side-note">
+    <h4>02 · CLASS INTERACTION</h4>
+    <p>学生输入 6 位课堂码进入直播间，接收教师发起的随堂测，限时作答后实时显示全班选项分布与排名。</p>
+  </div>
+  <div class="side-note warn">
+    <h4>03 · DATA LOOP</h4>
+    <p>首页任务卡承载教师布置的预习包与分层作业，完成状态实时回传教师端看板，形成教学闭环。</p>
+  </div>
+</div>
+
+<!-- 手机 -->
+<div class="phone">
+  <div class="screen">
+    <div class="notch"></div>
+    <div class="statusbar">
+      <span>9:41</span>
+      <div class="icons">
+        <span>5G</span><span>87%</span>
+      </div>
+    </div>
+
+    <div class="toast" id="toast"></div>
+
+    <div class="pages">
+
+      <!-- ========== 首页 ========== -->
+      <div class="m-page active" id="m-home">
+        <div class="home-hero">
+          <div class="hi">晚上好，张明</div>
+          <div class="name">张明同学</div>
+          <div class="date">07-22 WED · D-320</div>
+        </div>
+
+        <div class="streak-card">
+          <div>
+            <div class="streak-num">12</div>
+            <div class="streak-label">DAY STREAK</div>
+          </div>
+          <div class="streak-info">
+            <div class="t1">连续学习 12 天</div>
+            <div class="t2">今日 8 题 · ACC 75%</div>
+          </div>
+        </div>
+
+        <div class="m-card">
+          <div class="m-title">今日任务 <span class="tag">3 OPEN</span></div>
+
+          <div class="task-item" onclick="goPage('m-class')">
+            <span class="task-badge preview">[PREVIEW]</span>
+            <div class="task-info">
+              <div class="tt">课前预习：椭圆及其标准方程</div>
+              <div class="td">李老师布置 · 微课 8 分钟 + 诊断 3 题 · 明天数学课前</div>
+            </div>
+            <span class="task-arrow">-></span>
+          </div>
+
+          <div class="task-item" onclick="startQuiz('homework')">
+            <span class="task-badge homework">[HOMEWORK]</span>
+            <div class="task-info">
+              <div class="tt">课后作业：三角函数专项 5 题</div>
+              <div class="td">按你课堂掌握度推送 · 预计 10 分钟</div>
+            </div>
+            <span class="task-arrow">-></span>
+          </div>
+
+          <div class="task-item done">
+            <span class="task-badge done">[DONE]</span>
+            <div class="task-info">
+              <div class="tt">错题重练：函数单调性 3 题</div>
+              <div class="td">已完成 · ACC 100%</div>
+            </div>
+          </div>
+        </div>
+
+        <div class="m-card">
+          <div class="m-title">快速入口</div>
+          <div class="quick-grid">
+            <div class="quick-item" onclick="goPage('m-practice')">
+              <div class="qn">01</div>
+              <div class="qt">智能刷题</div>
+              <div class="qd">针对薄弱点出题</div>
+            </div>
+            <div class="quick-item" onclick="goPage('m-mistake')">
+              <div class="qn">02</div>
+              <div class="qt">错题本</div>
+              <div class="qd">23 道待攻克</div>
+            </div>
+            <div class="quick-item" onclick="goPage('m-report')">
+              <div class="qn">03</div>
+              <div class="qt">我的学情</div>
+              <div class="qd">知识点画像</div>
+            </div>
+            <div class="quick-item" onclick="goPage('m-class')">
+              <div class="qn">04</div>
+              <div class="qt">课堂互动</div>
+              <div class="qd">输入课堂码进入</div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ========== 刷题模式选择 ========== -->
+      <div class="m-page" id="m-practice">
+        <div class="m-title" style="margin-top:8px">刷题中心</div>
+
+        <div class="mode-banner" onclick="startQuiz('smart')">
+          <div class="mn">01</div>
+          <div class="mt">智能推荐 SMART</div>
+          <div class="md">AI 根据你的薄弱知识点「离散型随机变量」「圆锥曲线」精准出题</div>
+          <span class="mode-tag">RECOMMEND 10 · ~15 MIN</span>
+        </div>
+
+        <div class="mode-banner" onclick="startQuiz('special')">
+          <div class="mn">02</div>
+          <div class="mt">专项突破 SPECIAL</div>
+          <div class="md">按模块自由选择：函数与导数 / 几何与向量 / 概率与统计…</div>
+          <span class="mode-tag">52 KP COVERED</span>
+        </div>
+
+        <div class="mode-banner" onclick="startQuiz('mistake')">
+          <div class="mn">03</div>
+          <div class="mt">错题重练 RETRY</div>
+          <div class="md">从你的 23 道错题中智能抽题，重做正确后移出错题本</div>
+          <span class="mode-tag">FIX ERRORS · FASTEST</span>
+        </div>
+
+        <div class="m-card">
+          <div class="m-title">本周刷题记录</div>
+          <div class="mastery-row"><span class="mn">周一</span><div class="mb"><div class="mf" style="width:60%;background:var(--accent)"></div></div><span class="mv" style="color:var(--accent)">12</span></div>
+          <div class="mastery-row"><span class="mn">周二</span><div class="mb"><div class="mf" style="width:80%;background:var(--accent)"></div></div><span class="mv" style="color:var(--accent)">16</span></div>
+          <div class="mastery-row"><span class="mn">周三</span><div class="mb"><div class="mf" style="width:40%;background:var(--accent)"></div></div><span class="mv" style="color:var(--accent)">8</span></div>
+          <div class="mastery-row"><span class="mn">周四</span><div class="mb"><div class="mf" style="width:90%;background:var(--accent)"></div></div><span class="mv" style="color:var(--accent)">18</span></div>
+          <div class="mastery-row"><span class="mn">周五</span><div class="mb"><div class="mf" style="width:70%;background:var(--accent)"></div></div><span class="mv" style="color:var(--accent)">14</span></div>
+        </div>
+      </div>
+
+      <!-- ========== 答题界面 ========== -->
+      <div class="m-page" id="m-quiz">
+        <div class="quiz-top">
+          <span class="quiz-count" id="quiz-count">Q 01/03</span>
+          <div class="quiz-progress"><div class="qp" id="quiz-qp" style="width:33%"></div></div>
+          <span class="quiz-timer" id="quiz-timer">T+ 00:00</span>
+        </div>
+        <div id="quiz-body"></div>
+      </div>
+
+      <!-- ========== 错题本 ========== -->
+      <div class="m-page" id="m-mistake">
+        <div class="m-title" style="margin-top:8px">错题本</div>
+        <div class="mistake-stat">
+          <div class="ms-box"><div class="v" style="color:var(--err)">23</div><div class="l">[OPEN]</div></div>
+          <div class="ms-box"><div class="v" style="color:var(--warn)">8</div><div class="l">[RETRY]</div></div>
+          <div class="ms-box"><div class="v" style="color:var(--accent)">41</div><div class="l">[DONE]</div></div>
+        </div>
+
+        <div class="mistake-item">
+          <div class="mm"><span class="tag err">[x4]</span><span class="tag">几何与向量</span></div>
+          <div class="mq">已知椭圆 C: x²/4 + y² = 1，过点 P(0,1) 的直线 l 与椭圆交于 A,B 两点，求 |PA|·|PB| 的最大值</div>
+          <div class="mistake-foot">
+            <span class="cnt">错因：韦达定理运用不熟练</span>
+            <button class="btn-mini" onclick="startQuiz('mistake')">REDO -></button>
+          </div>
+        </div>
+
+        <div class="mistake-item">
+          <div class="mm"><span class="tag err">[x3]</span><span class="tag">概率与统计</span></div>
+          <div class="mq">某工厂生产甲、乙两种产品，甲产品一等品率 80%，求总利润的分布列和数学期望</div>
+          <div class="mistake-foot">
+            <span class="cnt">错因：分布列构建能力薄弱</span>
+            <button class="btn-mini" onclick="startQuiz('mistake')">REDO -></button>
+          </div>
+        </div>
+
+        <div class="mistake-item" style="border-left-color:var(--warn)">
+          <div class="mm"><span class="tag warn">[x2]</span><span class="tag">函数与导数</span></div>
+          <div class="mq">已知函数 f(x) = eˣ - ax - 1，讨论 f(x) 的单调性并求 a 的取值范围</div>
+          <div class="mistake-foot">
+            <span class="cnt">错因：恒成立问题分类讨论不清</span>
+            <button class="btn-mini" onclick="startQuiz('mistake')">REDO -></button>
+          </div>
+        </div>
+      </div>
+
+      <!-- ========== 学情 ========== -->
+      <div class="m-page" id="m-report">
+        <div class="m-title" style="margin-top:8px">我的学情</div>
+
+        <div class="m-card">
+          <div class="report-hero">
+            <div class="score">72</div>
+            <div class="sl">MASTERY INDEX · CLASS RANK 08</div>
+          </div>
+          <div class="ring-row">
+            <div class="ring-item">
+              <div class="ring" style="background:conic-gradient(var(--accent) 0 82%, var(--bg-3) 82% 100%)"><span style="color:var(--accent)">82%</span></div>
+              <div class="rl">代数不等式</div>
+            </div>
+            <div class="ring-item">
+              <div class="ring" style="background:conic-gradient(var(--accent) 0 78%, var(--bg-3) 78% 100%)"><span style="color:var(--accent)">78%</span></div>
+              <div class="rl">函数导数</div>
+            </div>
+            <div class="ring-item">
+              <div class="ring" style="background:conic-gradient(var(--err) 0 52%, var(--bg-3) 52% 100%)"><span style="color:var(--err)">52%</span></div>
+              <div class="rl">概率统计</div>
+            </div>
+          </div>
+        </div>
+
+        <div class="m-card">
+          <div class="m-title">模块掌握度</div>
+          <div class="mastery-row"><span class="mn">函数与导数</span><div class="mb"><div class="mf" style="width:78%;background:var(--accent)"></div></div><span class="mv" style="color:var(--accent)">78%</span></div>
+          <div class="mastery-row"><span class="mn">几何与向量</span><div class="mb"><div class="mf" style="width:65%;background:var(--warn)"></div></div><span class="mv" style="color:var(--warn)">65%</span></div>
+          <div class="mastery-row"><span class="mn">代数不等式</span><div class="mb"><div class="mf" style="width:85%;background:var(--accent)"></div></div><span class="mv" style="color:var(--accent)">85%</span></div>
+          <div class="mastery-row"><span class="mn">概率与统计</span><div class="mb"><div class="mf" style="width:52%;background:var(--err)"></div></div><span class="mv" style="color:var(--err)">52%</span></div>
+          <div class="mastery-row"><span class="mn">微积分初步</span><div class="mb"><div class="mf" style="width:70%;background:var(--accent)"></div></div><span class="mv" style="color:var(--accent)">70%</span></div>
+        </div>
+
+        <div class="m-card">
+          <div class="m-title">薄弱知识点 <span class="tag err">2 CRITICAL</span></div>
+          <div class="weak-mini p0">
+            <div class="wn">离散型随机变量及其分布 <span class="tag err">[P0]</span></div>
+            <div class="wr">期望方差公式运用不熟练 · 掌握度 35% · 建议先练 Lv.1-2 基础题</div>
+          </div>
+          <div class="weak-mini p0">
+            <div class="wn">直线与圆锥曲线位置关系 <span class="tag err">[P0]</span></div>
+            <div class="wr">韦达定理运用不熟练 · 掌握度 42% · 建议观看微课第 3 讲</div>
+          </div>
+          <div class="weak-mini p1">
+            <div class="wn">导数的综合应用 <span class="tag warn">[P1]</span></div>
+            <div class="wr">恒成立问题分类讨论不清 · 掌握度 48%</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ========== 课堂互动 ========== -->
+      <div class="m-page" id="m-class">
+        <!-- 课堂码输入 -->
+        <div id="class-join">
+          <div class="class-hero">
+            <div class="prompt">ENTER CLASS CODE</div>
+            <div class="cd">输入教师大屏幕上的 6 位课堂码<br>参与随堂测与实时抢答</div>
+          </div>
+          <div class="code-input" id="code-input">
+            <input class="code-digit" maxlength="1" inputmode="numeric">
+            <input class="code-digit" maxlength="1" inputmode="numeric">
+            <input class="code-digit" maxlength="1" inputmode="numeric">
+            <input class="code-digit" maxlength="1" inputmode="numeric">
+            <input class="code-digit" maxlength="1" inputmode="numeric">
+            <input class="code-digit" maxlength="1" inputmode="numeric">
+          </div>
+          <div style="padding:0 20px">
+            <button class="btn btn-primary" onclick="joinClass()">进入课堂</button>
+            <div style="text-align:center;margin-top:14px;font-family:var(--font-display);font-size:11px;color:var(--tx-3);letter-spacing:0.04em">DEMO · ANY 6 DIGITS</div>
+          </div>
+
+          <div class="m-card" style="margin-top:24px">
+            <div class="m-title">近期课堂</div>
+            <div class="task-item" style="margin-bottom:8px">
+              <span class="task-badge preview">SX</span>
+              <div class="task-info">
+                <div class="tt">数学 · 椭圆的标准方程</div>
+                <div class="td">今天 14:00 · 随堂测 4 题 · 答对 3 题</div>
+              </div>
+              <span class="tag ok">[ENDED]</span>
+            </div>
+            <div class="task-item" style="margin-bottom:0">
+              <span class="task-badge preview">SX</span>
+              <div class="task-info">
+                <div class="tt">数学 · 导数的几何意义</div>
+                <div class="td">昨天 10:00 · 随堂测 3 题 · 答对 2 题</div>
+              </div>
+              <span class="tag ok">[ENDED]</span>
             </div>
           </div>
         </div>
@@ -866,5 +1156,4 @@ function leaveClass() {
   document.addEventListener('DOMContentLoaded', initThemeUI, { once: true });
 </script>
 </body>
-</html>
-
+</html>
