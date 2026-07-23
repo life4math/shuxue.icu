@@ -5,6 +5,7 @@
 website/uploads/
 
 # API 配置（含密钥，不提交）
+config.json
 website/scripts/config.json
 
 # Windows 系统文件
