@@ -212,11 +212,14 @@ echo -e "${YELLOW}[5/8] 设置目录权限...${NC}"
 mkdir -p "$WEBSITE_DIR/uploads"
 mkdir -p "$WEBSITE_DIR/scripts/output"
 
-# Nginx 用户需要读取权限 + uploads/data.js 写权限
+# Nginx 用户需要读取权限 + uploads/data.js 写权限。
+# 不使用 chmod -R 755，避免把普通文件全部标记为可执行并污染 Git 状态。
 chown -R nginx:nginx "$PROJECT_DIR"
-chmod -R 755 "$WEBSITE_DIR"
+find "$WEBSITE_DIR" -type d -exec chmod 755 {} +
+find "$WEBSITE_DIR" -type f -exec chmod 644 {} +
 chmod -R 775 "$WEBSITE_DIR/uploads"
 chmod 664 "$WEBSITE_DIR/js/data.js" 2>/dev/null || true
+chmod 600 "$WEBSITE_DIR/scripts/config.json" 2>/dev/null || true
 
 echo -e "${GREEN}  -> 权限设置完成${NC}"
 echo ""
@@ -321,6 +324,8 @@ server {
     location /css/      { expires 7d; }
     location /js/       { expires 7d; }
     location /vendor/   { expires 30d; }
+    # 后端代码和密钥配置禁止静态访问
+    location ^~ /scripts/ { return 404; }
     # 禁止直接公开用户上传内容
     location ^~ /uploads/ { return 404; }
 
