@@ -494,7 +494,36 @@
               <input type="text" id="ed-m-name" placeholder="如：裂项相消法">
             </div>
             <div class="form-field">
-              <label>CAT…448 tokens truncated…on>
+              <label>CATEGORY · 分类</label>
+              <input type="text" id="ed-m-category" placeholder="如：数列求和">
+            </div>
+            <div class="form-field">
+              <label>MODULE</label>
+              <select id="ed-m-module">
+                <option value="FUNC">FUNC · 函数与导数</option>
+                <option value="GEOM">GEOM · 几何与向量</option>
+                <option value="ALGE">ALGE · 代数与不等式</option>
+                <option value="PROB">PROB · 概率与统计</option>
+                <option value="CALC">CALC · 微积分初步</option>
+              </select>
+            </div>
+          </div>
+
+          <div class="form-field full-width">
+            <label>PRINCIPLE · 原理</label>
+            <textarea id="ed-m-principle" rows="2" placeholder="一句话概括方法原理"></textarea>
+          </div>
+
+          <div class="form-field full-width">
+            <label>STEPS · 解题步骤</label>
+            <div id="ed-m-steps" class="steps-editor">
+              <div class="step-row"><span class="step-num">01</span><input type="text" class="step-input" placeholder="步骤1"></div>
+              <div class="step-row"><span class="step-num">02</span><input type="text" class="step-input" placeholder="步骤2"></div>
+              <div class="step-row"><span class="step-num">03</span><input type="text" class="step-input" placeholder="步骤3"></div>
+              <div class="step-row"><span class="step-num">04</span><input type="text" class="step-input" placeholder="步骤4"></div>
+              <div class="step-row"><span class="step-num">05</span><input type="text" class="step-input" placeholder="步骤5"></div>
+            </div>
+            <button class="btn-ghost" onclick="addStep()">+ ADD STEP</button>
           </div>
 
           <div class="form-field full-width">
@@ -842,5 +871,4 @@
   <script src="js/charts.js"></script>
   <script src="js/app.js"></script>
 </body>
-</html>
-
+</html>
