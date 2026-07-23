@@ -3,17 +3,18 @@
 import hashlib
 import os
 import secrets
-from datetime import datetime
+from datetime import datetime, timedelta
 from functools import wraps
 from pathlib import Path
 
-from flask import Blueprint, jsonify, request, session
-from sqlalchemy import select, text
+from flask import Blueprint, current_app, jsonify, request, session
+from sqlalchemy import delete, func, or_, select, text
 from werkzeug.utils import secure_filename
 
 from platform_db import (
     AIJob,
     AuditLog,
+    LoginFailure,
     PublishedContent,
     ReviewItem,
     SessionLocal,
@@ -27,6 +28,7 @@ from platform_db import (
 admin_api = Blueprint("admin_api", __name__, url_prefix="/api/v1")
 UPLOAD_DIR = Path(__file__).resolve().parent.parent / "uploads"
 ALLOWED_EXTENSIONS = {".png", ".jpg", ".jpeg", ".webp", ".pdf", ".docx", ".txt", ".md"}
+LOGIN_COOLDOWN_START = 5
 
 
 def _json_error(message, status):
@@ -90,6 +92,79 @@ def _audit(db, user, action, target_type, target_id=None, detail=None):
     )
 
 
+def _login_key(scope, value):
+    return hashlib.sha256(f"{scope}:{value}".encode("utf-8")).hexdigest()
+
+
+def _client_ip():
+    # Gunicorn 仅绑定回环地址，生产请求由受信任的 Nginx 写入 X-Real-IP。
+    return request.headers.get("X-Real-IP", "").strip() or request.remote_addr or "unknown"
+
+
+def _failure_summary(db, column, key, since):
+    return db.execute(
+        select(func.count(LoginFailure.id), func.min(LoginFailure.created_at), func.max(LoginFailure.created_at))
+        .where(column == key, LoginFailure.created_at >= since)
+    ).one()
+
+
+def _retry_after_for_failures(
+    count,
+    first_at,
+    last_at,
+    now,
+    hard_limit,
+    window_seconds,
+    progressive_cooldown,
+):
+    if not count:
+        return 0
+    if count >= hard_limit:
+        expires_at = first_at + timedelta(seconds=window_seconds)
+        return max(1, int((expires_at - now).total_seconds()) + 1)
+    if progressive_cooldown and count >= LOGIN_COOLDOWN_START:
+        cooldown = min(2 ** (count - LOGIN_COOLDOWN_START), 60)
+        return max(0, int((last_at + timedelta(seconds=cooldown) - now).total_seconds()) + 1)
+    return 0
+
+
+def _login_retry_after(db, account_key, ip_key, now):
+    window_seconds = current_app.config["LOGIN_FAILURE_WINDOW_SECONDS"]
+    since = now - timedelta(seconds=window_seconds)
+    account = _failure_summary(db, LoginFailure.account_key, account_key, since)
+    ip = _failure_summary(db, LoginFailure.ip_key, ip_key, since)
+    return max(
+        _retry_after_for_failures(
+            *account,
+            now,
+            current_app.config["LOGIN_ACCOUNT_FAILURE_LIMIT"],
+            window_seconds,
+            True,
+        ),
+        _retry_after_for_failures(
+            *ip,
+            now,
+            current_app.config["LOGIN_IP_FAILURE_LIMIT"],
+            window_seconds,
+            False,
+        ),
+    )
+
+
+def _rate_limited(retry_after):
+    response = jsonify({"error": "too many login attempts", "retry_after": retry_after})
+    response.status_code = 429
+    response.headers["Retry-After"] = str(retry_after)
+    return response
+
+
+def _clear_login_failures(db, email, ip=None):
+    conditions = [LoginFailure.account_key == _login_key("account", email)]
+    if ip:
+        conditions.append(LoginFailure.ip_key == _login_key("ip", ip))
+    db.execute(delete(LoginFailure).where(or_(*conditions)))
+
+
 def _user_json(user):
     return {
         "id": user.id,
@@ -112,13 +187,43 @@ def login():
 
     db = SessionLocal()
     try:
+        now = datetime.utcnow()
+        ip = _client_ip()
+        account_key = _login_key("account", email)
+        ip_key = _login_key("ip", ip)
+        retry_after = _login_retry_after(db, account_key, ip_key, now)
+        if retry_after:
+            return _rate_limited(retry_after)
+
         user = db.scalar(select(User).where(User.email == email))
         if not user or not user.is_active or not user.check_password(password):
+            db.add(
+                LoginFailure(
+                    account_key=account_key,
+                    ip_key=ip_key,
+                    user_id=user.id if user else None,
+                )
+            )
+            _audit(
+                db,
+                user,
+                "auth.login_failed",
+                "user",
+                user.id if user else None,
+                {"account_key": account_key, "ip_key": ip_key},
+            )
+            db.commit()
+            retry_after = _login_retry_after(db, account_key, ip_key, now)
+            if retry_after:
+                return _rate_limited(retry_after)
             return _json_error("invalid credentials", 401)
+
+        _clear_login_failures(db, email, ip)
         session.clear()
+        session.permanent = True
         session["user_id"] = user.id
         session["csrf_token"] = secrets.token_urlsafe(32)
-        user.last_login_at = datetime.utcnow()
+        user.last_login_at = now
         _audit(db, user, "auth.login", "user", user.id)
         db.commit()
         return jsonify(
@@ -244,7 +349,22 @@ def reset_user_password(db, user_id):
     if len(password) < 12:
         return _json_error("password must be at least 12 characters", 400)
     user.set_password(password)
+    _clear_login_failures(db, user.email)
     _audit(db, request.current_user, "user.reset_password", "user", user.id)
+    db.commit()
+    return jsonify({"success": True})
+
+
+@admin_api.post("/admin/users/<user_id>/unlock-login")
+@login_required
+@admin_required
+@csrf_required
+def unlock_user_login(db, user_id):
+    user = db.get(User, user_id)
+    if not user:
+        return _json_error("user not found", 404)
+    _clear_login_failures(db, user.email)
+    _audit(db, request.current_user, "user.unlock_login", "user", user.id)
     db.commit()
     return jsonify({"success": True})
 
@@ -630,13 +750,32 @@ def ready():
 
 def configure_platform(app):
     init_database()
+    session_secret = os.environ.get("SHUXUE_SESSION_SECRET", "").strip()
+    environment = os.environ.get("SHUXUE_ENV", "production").strip().lower()
+    if not session_secret:
+        raise RuntimeError("SHUXUE_SESSION_SECRET must be configured")
+    if environment == "production" and len(session_secret) < 32:
+        raise RuntimeError("SHUXUE_SESSION_SECRET must contain at least 32 characters in production")
+
     app.config.update(
-        SECRET_KEY=os.environ.get("SHUXUE_SESSION_SECRET") or os.environ.get("SHUXUE_ADMIN_TOKEN"),
+        SECRET_KEY=session_secret,
         SESSION_COOKIE_HTTPONLY=True,
-        SESSION_COOKIE_SECURE=not app.debug,
+        SESSION_COOKIE_SECURE=environment == "production",
         SESSION_COOKIE_SAMESITE="Strict",
+        SESSION_COOKIE_NAME="shuxue_admin_session",
+        PERMANENT_SESSION_LIFETIME=timedelta(
+            hours=max(1, int(os.environ.get("SHUXUE_SESSION_HOURS", "8")))
+        ),
+        SESSION_REFRESH_EACH_REQUEST=False,
+        LOGIN_FAILURE_WINDOW_SECONDS=max(
+            60, int(os.environ.get("SHUXUE_LOGIN_WINDOW_SECONDS", "900"))
+        ),
+        LOGIN_ACCOUNT_FAILURE_LIMIT=max(
+            LOGIN_COOLDOWN_START, int(os.environ.get("SHUXUE_LOGIN_ACCOUNT_LIMIT", "10"))
+        ),
+        LOGIN_IP_FAILURE_LIMIT=max(
+            LOGIN_COOLDOWN_START, int(os.environ.get("SHUXUE_LOGIN_IP_LIMIT", "30"))
+        ),
         MAX_CONTENT_LENGTH=50 * 1024 * 1024,
     )
-    if not app.config["SECRET_KEY"]:
-        raise RuntimeError("SHUXUE_SESSION_SECRET or SHUXUE_ADMIN_TOKEN must be configured")
     app.register_blueprint(admin_api)

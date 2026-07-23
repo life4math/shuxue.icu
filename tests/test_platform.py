@@ -2,6 +2,9 @@ import importlib
 import os
 import sys
 
+import pytest
+from sqlalchemy import select
+
 
 ROOT = os.path.dirname(os.path.dirname(__file__))
 SCRIPT_DIR = os.path.join(ROOT, "website", "scripts")
@@ -10,7 +13,11 @@ sys.path.insert(0, SCRIPT_DIR)
 
 def build_app(tmp_path):
     os.environ["SHUXUE_DATABASE_URL"] = f"sqlite:///{tmp_path / 'test.db'}"
-    os.environ["SHUXUE_SESSION_SECRET"] = "test-secret-not-for-production"
+    os.environ["SHUXUE_SESSION_SECRET"] = "test-secret-not-for-production-0123456789"
+    os.environ["SHUXUE_ENV"] = "test"
+    os.environ["SHUXUE_LOGIN_ACCOUNT_LIMIT"] = "5"
+    os.environ["SHUXUE_LOGIN_IP_LIMIT"] = "8"
+    os.environ["SHUXUE_LOGIN_WINDOW_SECONDS"] = "300"
     for name in ["server", "platform_api", "platform_db"]:
         sys.modules.pop(name, None)
     server = importlib.import_module("server")
@@ -108,6 +115,73 @@ def test_login_requires_valid_credentials(tmp_path):
     response = client.post("/api/v1/auth/login", json={"email": email, "password": password})
     assert response.status_code == 200
     assert response.get_json()["user"]["role"] == "teacher"
+    assert app.config["SESSION_COOKIE_HTTPONLY"] is True
+    assert app.config["SESSION_COOKIE_SAMESITE"] == "Strict"
+    assert app.config["SESSION_REFRESH_EACH_REQUEST"] is False
+
+
+def test_login_rate_limit_and_admin_unlock(tmp_path):
+    app, db_module = build_app(tmp_path)
+    teacher_email, teacher_password = create_user(db_module)
+    admin_email, admin_password = create_user(
+        db_module,
+        "admin@example.com",
+        "correct-admin-password",
+        role="admin",
+    )
+    client = app.test_client()
+
+    for _ in range(4):
+        assert client.post(
+            "/api/v1/auth/login",
+            json={"email": teacher_email, "password": "wrong-password"},
+        ).status_code == 401
+    limited = client.post(
+        "/api/v1/auth/login",
+        json={"email": teacher_email, "password": "wrong-password"},
+    )
+    assert limited.status_code == 429
+    assert int(limited.headers["Retry-After"]) >= 1
+    assert client.post(
+        "/api/v1/auth/login",
+        json={"email": teacher_email, "password": teacher_password},
+    ).status_code == 429
+
+    admin_client = app.test_client()
+    csrf = login(admin_client, admin_email, admin_password)
+    db = db_module.SessionLocal()
+    teacher = db.scalar(select(db_module.User).where(db_module.User.email == teacher_email))
+    teacher_id = teacher.id
+    failed_audits = db.scalars(
+        select(db_module.AuditLog).where(db_module.AuditLog.action == "auth.login_failed")
+    ).all()
+    db_module.SessionLocal.remove()
+    assert len(failed_audits) == 5
+
+    unlocked = admin_client.post(
+        f"/api/v1/admin/users/{teacher_id}/unlock-login",
+        headers={"X-CSRF-Token": csrf},
+    )
+    assert unlocked.status_code == 200
+    assert client.post(
+        "/api/v1/auth/login",
+        json={"email": teacher_email, "password": teacher_password},
+    ).status_code == 200
+
+
+def test_session_secret_never_falls_back_to_admin_token(tmp_path, monkeypatch):
+    monkeypatch.setenv("SHUXUE_DATABASE_URL", f"sqlite:///{tmp_path / 'missing-secret.db'}")
+    monkeypatch.delenv("SHUXUE_SESSION_SECRET", raising=False)
+    monkeypatch.setenv("SHUXUE_ADMIN_TOKEN", "admin-token-must-not-be-a-session-secret")
+    monkeypatch.setenv("SHUXUE_ENV", "test")
+    for name in ["server", "platform_api", "platform_db"]:
+        sys.modules.pop(name, None)
+
+    with pytest.raises(RuntimeError, match="SHUXUE_SESSION_SECRET must be configured"):
+        importlib.import_module("server")
+
+    for name in ["server", "platform_api", "platform_db"]:
+        sys.modules.pop(name, None)
 
 
 def test_mutation_requires_csrf(tmp_path):

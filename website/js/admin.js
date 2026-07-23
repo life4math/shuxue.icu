@@ -331,7 +331,7 @@ function renderUser(user) {
   const meta = document.createElement('div');
   meta.className = 'admin-row-meta';
   const roleText = user.role === 'admin' ? '管理员' : '教师';
-  meta.append(document.createTextNode(roleText), document.createTextNode(user.is_active ? '启用' : '停用'));
+  meta.textContent = `${roleText} · ${user.is_active ? '启用' : '停用'}`;
 
   const actions = document.createElement('div');
   actions.className = 'admin-row-actions';
@@ -355,7 +355,16 @@ function renderUser(user) {
     resetUserPassword();
   });
 
-  actions.append(activeButton, resetButton);
+  const unlockButton = document.createElement('button');
+  unlockButton.className = 'btn-ghost';
+  unlockButton.textContent = '解除登录限制';
+  unlockButton.addEventListener('click', event => {
+    event.preventDefault();
+    event.stopPropagation();
+    unlockUserLogin(user.id);
+  });
+
+  actions.append(activeButton, resetButton, unlockButton);
 
   row.append(heading, meta, actions);
   return row;
@@ -499,6 +508,19 @@ async function resetUserPassword() {
   }
 
   status.textContent = '请在“密码”输入框填写新密码后再重置';
+}
+
+async function unlockUserLogin(userId) {
+  if (!isAdmin()) return;
+  const status = document.getElementById('user-admin-status');
+  try {
+    await api(`/admin/users/${encodeURIComponent(userId)}/unlock-login`, {
+      method: 'POST',
+    });
+    status.textContent = '登录限制已解除';
+  } catch (err) {
+    status.textContent = `失败：${err.message}`;
+  }
 }
 
 document.getElementById('user-admin-form')?.addEventListener('submit', event => {

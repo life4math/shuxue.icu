@@ -41,6 +41,18 @@ class User(Base):
         return check_password_hash(self.password_hash, password)
 
 
+class LoginFailure(Base):
+    """登录失败事件；只保存账号和 IP 的哈希，供多进程共享限流状态。"""
+
+    __tablename__ = "login_failures"
+
+    id: Mapped[str] = mapped_column(String(40), primary_key=True, default=lambda: new_id("lfail"))
+    account_key: Mapped[str] = mapped_column(String(64), index=True)
+    ip_key: Mapped[str] = mapped_column(String(64), index=True)
+    user_id: Mapped[Optional[str]] = mapped_column(ForeignKey("users.id"), nullable=True, index=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow, index=True)
+
+
 class UploadFile(Base):
     __tablename__ = "upload_files"
 
