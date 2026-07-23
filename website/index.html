@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>shuxue.icu - 高考数学教研平台</title>
   <link rel="stylesheet" href="vendor/katex.min.css">
-  <link rel="stylesheet" href="css/style.css?v=20260723-2">
+  <link rel="stylesheet" href="css/style.css?v=20260723-3">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@300;400;500;600;700&display=swap" rel="stylesheet">
@@ -43,17 +43,15 @@
   <!-- 主内容区 -->
   <main class="main-content">
 
-    <!-- ===== 学习方案（题库 + 知识图谱 + 方法库） ===== -->
+    <!-- ===== 学习方案（2027 高考数学知识清单） ===== -->
     <div class="page active" id="page-learning">
-      <!-- 子导航条 -->
+      <!-- 题库与方法库暂不对外展示，只保留知识图谱 -->
       <div class="sub-nav" id="learning-subnav">
-        <button class="sub-nav-btn active" data-sub="questions">题库</button>
-        <button class="sub-nav-btn" data-sub="knowledge">知识图谱</button>
-        <button class="sub-nav-btn" data-sub="methods">方法库</button>
+        <button class="sub-nav-btn active" data-sub="knowledge">知识图谱</button>
       </div>
 
       <!-- 题库子页 -->
-      <div class="sub-page active" id="sub-questions">
+      <div class="sub-page" id="sub-questions">
         <!-- 筛选工具栏 -->
         <div class="filter-bar">
           <div class="filter-group">
@@ -116,23 +114,38 @@
       </div>
 
       <!-- 知识图谱子页 -->
-      <div class="sub-page" id="sub-knowledge">
-        <div class="knowledge-header">
-          <h2>KNOWLEDGE TREE</h2>
-          <p>52 NODES · 5 MODULES · 5 LEVELS</p>
+      <div class="sub-page active" id="sub-knowledge">
+        <div class="knowledge-cover">
+          <div>
+            <span class="knowledge-eyebrow">2027 GAOKAO · MATHEMATICS</span>
+            <h2>2027年高考数学<br><span>知识清单</span></h2>
+            <p>以模块、章节和知识点组织的完整备考地图。选择目录或知识卡片，查看层级、难度与高考频率。</p>
+          </div>
+          <div class="knowledge-cover-stats">
+            <div><strong id="knowledge-module-count">0</strong><span>知识模块</span></div>
+            <div><strong id="knowledge-node-count">0</strong><span>知识节点</span></div>
+            <div><strong id="knowledge-hot-count">0</strong><span>高频考点</span></div>
+          </div>
+        </div>
+        <div class="knowledge-actions">
+          <label class="knowledge-search">
+            <span>SEARCH</span>
+            <input id="knowledge-search-input" type="search" placeholder="搜索知识点、章节或编号">
+          </label>
+          <button class="btn-sm" onclick="expandAll()">全部展开</button>
+          <button class="btn-sm" onclick="collapseAll()">全部收起</button>
         </div>
         <div class="knowledge-layout">
           <div class="knowledge-tree-panel">
-            <div class="tree-toolbar">
-              <button class="btn-sm" onclick="expandAll()">EXPAND</button>
-              <button class="btn-sm" onclick="collapseAll()">COLLAPSE</button>
-              <button class="btn-sm" data-tier-lock="pro" onclick="annotateNode()">ANNOTATE</button>
-            </div>
+            <div class="tree-toolbar"><span>知识目录</span></div>
             <div class="knowledge-tree" id="knowledge-tree"></div>
           </div>
-          <div class="knowledge-detail-panel" id="knowledge-detail">
-            <div class="detail-empty">
-              <p>SELECT NODE</p>
+          <div class="knowledge-document-panel">
+            <div class="knowledge-document" id="knowledge-document"></div>
+            <div class="knowledge-detail-panel" id="knowledge-detail">
+              <div class="detail-empty">
+                <p>选择一个知识点查看详情</p>
+              </div>
             </div>
           </div>
         </div>
@@ -874,6 +887,6 @@
   <script src="js/themes.js?v=20260723-1"></script>
   <script src="js/data.js?v=20260723-1"></script>
   <script src="js/charts.js?v=20260723-1"></script>
-  <script src="js/app.js?v=20260723-1"></script>
+  <script src="js/app.js?v=20260723-3"></script>
 </body>
 </html>

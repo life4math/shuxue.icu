@@ -61,8 +61,8 @@ function initSubPage(parentNavId, sub) {
 
 // ===== 学习方案 =====
 function initLearning() {
-  // 默认显示题库子页
-  initQuestions();
+  // 当前公开学习方案只展示知识清单
+  initKnowledge();
 }
 
 // ===== 题库管理 =====
@@ -220,18 +220,60 @@ document.getElementById('question-modal').addEventListener('click', (e) => {
 
 // ===== 知识点体系 =====
 function initKnowledge() {
-  renderKnowledgeTree();
+  renderKnowledgeExperience();
+  if (!window._knowledgeBound) {
+    document.getElementById('knowledge-search-input').addEventListener('input', debounce(event => {
+      renderKnowledgeExperience(event.target.value.trim());
+    }, 160));
+    document.getElementById('knowledge-document').addEventListener('click', event => {
+      const target = event.target.closest('[data-knowledge-id]');
+      if (target) selectKnowledgeNode(target.dataset.knowledgeId);
+    });
+    window._knowledgeBound = true;
+  }
 }
 
-function renderKnowledgeTree() {
-  const container = document.getElementById('knowledge-tree');
-  container.innerHTML = knowledgeTree.map(module => renderTreeNode(module, 0)).join('');
+function renderKnowledgeExperience(query = '') {
+  const normalized = query.toLowerCase();
+  const visibleTree = normalized ? filterKnowledgeNodes(knowledgeTree, normalized) : knowledgeTree;
+  const allNodes = flattenKnowledgeNodes(knowledgeTree);
+
+  document.getElementById('knowledge-module-count').textContent = knowledgeTree.length;
+  document.getElementById('knowledge-node-count').textContent = allNodes.length;
+  document.getElementById('knowledge-hot-count').textContent =
+    allNodes.filter(node => node.examFrequency === 'high').length;
+
+  document.getElementById('knowledge-tree').innerHTML = visibleTree.length
+    ? visibleTree.map(module => renderTreeNode(module, 0)).join('')
+    : '<div class="knowledge-no-results">目录中没有匹配项</div>';
+  document.getElementById('knowledge-document').innerHTML = visibleTree.length
+    ? visibleTree.map((module, index) => renderKnowledgeModule(module, index)).join('')
+    : '<div class="knowledge-no-results large">没有找到相关知识点，请尝试其他关键词。</div>';
   bindTreeEvents();
+}
+
+function flattenKnowledgeNodes(nodes) {
+  return nodes.reduce((items, node) => {
+    items.push(node);
+    if (node.children) items.push(...flattenKnowledgeNodes(node.children));
+    return items;
+  }, []);
+}
+
+function filterKnowledgeNodes(nodes, query) {
+  return nodes.reduce((matches, node) => {
+    const selfMatches = node.name.toLowerCase().includes(query) || node.id.toLowerCase().includes(query);
+    const children = node.children ? filterKnowledgeNodes(node.children, query) : [];
+    if (selfMatches || children.length) {
+      matches.push(selfMatches ? node : { ...node, children });
+    }
+    return matches;
+  }, []);
 }
 
 function renderTreeNode(node, depth) {
   const hasChildren = node.children && node.children.length > 0;
-  const isExpanded = node.expanded !== false;
+  const isExpanded = depth < 1;
   const kpCount = countKnowledgePoints(node);
 
   let html = `<div class="tree-node" data-id="${node.id}">
@@ -251,6 +293,72 @@ function renderTreeNode(node, depth) {
 
   html += '</div>';
   return html;
+}
+
+function renderKnowledgeModule(module, index) {
+  const children = module.children || [];
+  return `<section class="knowledge-module-card" id="knowledge-module-${module.id}">
+    <header class="knowledge-module-heading" data-knowledge-id="${module.id}">
+      <span class="knowledge-module-number">${String(index + 1).padStart(2, '0')}</span>
+      <div>
+        <p>${module.id} · ${countKnowledgePoints(module)} ITEMS</p>
+        <h3>${module.name}</h3>
+      </div>
+    </header>
+    <div class="knowledge-section-body">
+      ${children.map(child => renderKnowledgeChapter(child)).join('')}
+    </div>
+  </section>`;
+}
+
+function renderKnowledgeChapter(node) {
+  const children = node.children || [];
+  if (!children.length) return renderKnowledgeLeaf(node);
+
+  return `<article class="knowledge-chapter-card">
+    <button class="knowledge-chapter-heading" type="button" data-knowledge-id="${node.id}">
+      <span>
+        <small>${node.id}</small>
+        <strong>${node.name}</strong>
+      </span>
+      <em>${countKnowledgePoints(node)} 个知识点</em>
+    </button>
+    <div class="knowledge-chapter-content">
+      ${children.map(child => child.children && child.children.length
+        ? renderKnowledgeGroup(child)
+        : renderKnowledgeLeaf(child)).join('')}
+    </div>
+  </article>`;
+}
+
+function renderKnowledgeGroup(node) {
+  return `<div class="knowledge-group">
+    <button type="button" class="knowledge-group-title" data-knowledge-id="${node.id}">
+      <span>${node.name}</span><small>${node.id}</small>
+    </button>
+    <div class="knowledge-leaf-grid">
+      ${node.children.map(child => renderKnowledgeLeaf(child)).join('')}
+    </div>
+  </div>`;
+}
+
+function renderKnowledgeLeaf(node) {
+  const frequency = node.examFrequency
+    ? `<span class="knowledge-frequency ${node.examFrequency}">${knowledgeFrequencyLabel(node.examFrequency)}</span>`
+    : '';
+  const difficulty = node.difficulty
+    ? `<span>难度 ${node.difficulty[0]}–${node.difficulty[1]}</span>`
+    : '';
+
+  return `<button type="button" class="knowledge-leaf-card" data-knowledge-id="${node.id}">
+    <span class="knowledge-leaf-code">${node.id}</span>
+    <strong>${node.name}</strong>
+    <span class="knowledge-leaf-meta">${frequency}${difficulty}</span>
+  </button>`;
+}
+
+function knowledgeFrequencyLabel(frequency) {
+  return frequency === 'high' ? '高频' : frequency === 'medium' ? '中频' : '基础';
 }
 
 function countKnowledgePoints(node) {
@@ -274,15 +382,24 @@ function bindTreeEvents() {
   // 选中知识点
   document.querySelectorAll('.tree-node-content').forEach(el => {
     el.addEventListener('click', () => {
-      document.querySelectorAll('.tree-node-content').forEach(n => n.classList.remove('selected'));
-      el.classList.add('selected');
-      showKnowledgeDetail(el.dataset.id);
+      selectKnowledgeNode(el.dataset.id);
     });
   });
 }
 
+function selectKnowledgeNode(id) {
+  document.querySelectorAll('[data-knowledge-id]').forEach(node => {
+    node.classList.toggle('selected', node.dataset.knowledgeId === id);
+  });
+  showKnowledgeDetail(id);
+  document.getElementById('knowledge-detail').scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+}
+
 function expandAll() {
   document.querySelectorAll('.tree-children').forEach(el => el.classList.remove('collapsed'));
+  document.querySelectorAll('.knowledge-section-body, .knowledge-chapter-content').forEach(el => {
+    el.classList.remove('collapsed');
+  });
   document.querySelectorAll('.tree-toggle').forEach(el => {
     if (el.closest('.tree-node').querySelector('.tree-children')) el.textContent = '[-]';
   });
@@ -290,6 +407,9 @@ function expandAll() {
 
 function collapseAll() {
   document.querySelectorAll('.tree-children').forEach(el => el.classList.add('collapsed'));
+  document.querySelectorAll('.knowledge-section-body, .knowledge-chapter-content').forEach(el => {
+    el.classList.add('collapsed');
+  });
   document.querySelectorAll('.tree-toggle').forEach(el => {
     if (el.closest('.tree-node').querySelector('.tree-children')) el.textContent = '[+]';
   });
@@ -311,11 +431,15 @@ function showKnowledgeDetail(id) {
   if (!node) return;
 
   const panel = document.getElementById('knowledge-detail');
-  const relatedQuestions = questions.filter(q => q.knowledge_points.some(kp => kp.startsWith(id)));
 
   panel.innerHTML = `
+    <div class="knowledge-detail-heading">
+      <span>${node.id}</span>
+      <h3>${node.name}</h3>
+      <p>${node.children ? '这是知识清单中的结构节点，用于组织下级知识内容。' : '这是 2027 年高考数学知识清单中的基础知识点。'}</p>
+    </div>
     <div class="detail-section">
-      <h4>INFO ·</h4>
+      <h4>知识信息</h4>
       <div class="detail-info-grid">
         <div class="detail-info-item">
           <div class="detail-info-label">知识点ID</div>
@@ -334,10 +458,6 @@ function showKnowledgeDetail(id) {
           <div class="detail-info-value">${node.difficulty ? 'Lv.' + node.difficulty[0] + ' - Lv.' + node.difficulty[1] : '-'}</div>
         </div>
         <div class="detail-info-item">
-          <div class="detail-info-label">关联题目</div>
-          <div class="detail-info-value">${relatedQuestions.length} 道</div>
-        </div>
-        <div class="detail-info-item">
           <div class="detail-info-label">子知识点</div>
           <div class="detail-info-value">${node.children ? node.children.length : 0} 个</div>
         </div>
@@ -345,27 +465,14 @@ function showKnowledgeDetail(id) {
     </div>
     ${node.children ? `
     <div class="detail-section">
-      <h4>CHILDREN ·</h4>
+      <h4>下级知识清单</h4>
       <div class="kp-children-list">
         ${node.children.map(child => `
-          <div class="kp-child-item">
+          <button type="button" class="kp-child-item" data-knowledge-id="${child.id}" onclick="selectKnowledgeNode('${child.id}')">
             <span class="kp-child-level">Lv.${child.level}</span>
             <span>${child.name}</span>
-            ${child.examFrequency ? `<span class="tree-badge ${child.examFrequency}" style="margin-left:auto">${child.examFrequency === 'high' ? 'HOT' : child.examFrequency === 'medium' ? 'MID' : 'LOW'}</span>` : ''}
-          </div>
-        `).join('')}
-      </div>
-    </div>` : ''}
-    ${relatedQuestions.length > 0 ? `
-    <div class="detail-section">
-      <h4>RELATED ·</h4>
-      <div class="kp-children-list">
-        ${relatedQuestions.map(q => `
-          <div class="kp-child-item" style="cursor:pointer" onclick="showQuestionDetail('${q.id}')">
-            <span class="kp-child-level">${q.id}</span>
-            <span style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${q.stem.substring(0, 40)}...</span>
-            <span class="tree-badge">${getDifficultyLabel(q.difficulty)}</span>
-          </div>
+            ${child.examFrequency ? `<span class="tree-badge ${child.examFrequency}" style="margin-left:auto">${knowledgeFrequencyLabel(child.examFrequency)}</span>` : ''}
+          </button>
         `).join('')}
       </div>
     </div>` : ''}
