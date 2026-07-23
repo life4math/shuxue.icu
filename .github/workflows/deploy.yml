@@ -1,0 +1,37 @@
+name: Deploy to Alibaba Cloud ECS
+
+# 触发：推送到 main 自动部署；也可在 Actions 页面手动触发。
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+# 同一时间只允许一个生产部署在跑，避免并发部署互相打架。
+concurrency:
+  group: production-deploy
+  cancel-in-progress: false
+
+jobs:
+  # ── 阶段一：校验（在 ECS 的自托管 Runner 上跑，但不碰生产目录）──
+  verify:
+    runs-on: [self-hosted, shuxue]
+    steps:
+      - name: 检出代码
+        uses: actions/checkout@v4
+
+      - name: 前端文件完整性校验
+        run: python3 deploy/check_integrity.py
+
+      - name: 后端单元测试
+        run: |
+          python3 -m venv /tmp/shuxue-ci-venv
+          /tmp/shuxue-ci-venv/bin/pip install -q -r requirements.txt
+          cd website/scripts && /tmp/shuxue-ci-venv/bin/python -m pytest -q ../../tests
+
+  # ── 阶段二：部署（校验通过后，更新生产目录并优雅重启）──
+  deploy:
+    needs: verify
+    runs-on: [self-hosted, shuxue]
+    steps:
+      - name: 执行部署（含健康检查与失败自动回滚）
+        run: sudo /var/www/shuxue/deploy/deploy.sh
