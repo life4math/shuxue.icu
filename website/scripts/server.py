@@ -55,6 +55,10 @@ app = Flask(__name__, static_folder=None)
 app.config["MAX_CONTENT_LENGTH"] = 50 * 1024 * 1024  # 50MB
 _process_write_lock = threading.Lock()
 
+from platform_api import configure_platform
+
+configure_platform(app)
+
 
 def _admin_token():
     """管理令牌只从环境变量读取，避免意外写入仓库。"""
@@ -70,6 +74,9 @@ def _request_token():
 
 def _is_protected_api():
     if not request.path.startswith("/api/"):
+        return False
+    # /api/v1 使用教师账号 Session + CSRF，不再复用运维 Token。
+    if request.path.startswith("/api/v1/"):
         return False
     return (
         request.method != "GET"
@@ -378,32 +385,7 @@ def process_file(filepath, filename):
 
     elif ext in {".txt", ".md", ".markdown"}:
         content = parse_text(filepath)
-        q_result = call_llm(QUESTION_PROMPT + content[:4000])
-        if "questions" in q_result:
-            for q in q_result["questions"]:
-                rid = next_id("R")
-                items.append({
-                    "id": rid, "status": "pending", "source": "text_parse",
-                    "sourceFile": filename,
-                    "extractedAt": datetime.datetime.now().isoformat(),
-                    "data": q, "aiConfidence": 0.93, "reviewNotes": ""
-                })
-
-    return items
-
-def _split_content(content, max_chars=2000):
-    paragraphs = content.split("\n\n")
-    chunks, current = [], ""
-    for p in paragraphs:
-        if len(current) + len(p) > max_chars:
-            if current: chunks.append(current)
-            current = p
-        else:
-            current += "\n\n" + p
-    if current: chunks.append(current)
-    return chunks or [content[:max_chars]]
-
-# ─── data.js 读写 ────────────────────────────────────
+  �n��G����ƭy�────────────────
 def read_data_js():
     """读取 data.js，返回三个数组的 JSON 对象
     data.js 使用 JS 对象语法（无引号 key），需要用 Node.js 解析"""

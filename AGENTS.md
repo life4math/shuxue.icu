@@ -16,10 +16,14 @@ website/               # Frontend — all static files served by Nginx
   pricing.html         # Subscription pricing page
   css/style.css        # All styles (CSS variables for theme system)
   js/app.js            # Main app logic, navigation, tab switching
-  js/data.js           # Question/method/review/blog/tier data (JS object syntax)
+  js/data.js           # 仅供公开原型使用的虚构演示数据
+  admin.html           # 教师后台入口（生产使用独立子域名）
   js/themes.js         # Theme engine (3 themes: PKU/TSINGHUA/CYAN)
   js/charts.js         # ECharts radar/trend chart rendering
-  scripts/server.py    # Flask backend (API endpoints for /api/*)
+  scripts/server.py    # Flask backend (legacy/demo API + v1 blueprint)
+  scripts/platform_db.py   # SQLAlchemy 正式数据模型
+  scripts/platform_api.py  # 教师账号、任务、审核和发布 API
+  scripts/worker.py        # AI 异步任务 Worker
   scripts/config.json  # ⚠️ SENSITIVE — OpenAI API key (gitignored, only config.example.json in repo)
   scripts/schema.json  # Data schema definition
   vendor/              # KaTeX, ECharts, Space Grotesk font (static assets)
@@ -101,7 +105,8 @@ bash deploy/setup.sh
 - **Language**: Chinese for all UI text, comments, and documentation; English for code identifiers
 - **CSS**: Use CSS custom properties (variables) for all theme-dependent values; never hardcode accent colors
 - **JS**: No framework — vanilla JS only; ES6+ features allowed; no module bundler
-- **Data**: All data lives in `js/data.js` as JS object literals (not JSON files)
+- **Demo data**: 公开展示数据位于 `js/data.js`，必须保持虚构且不得混入真实学生信息
+- **Production data**: 教师后台正式数据使用 SQLAlchemy；生产数据库为 PostgreSQL
 - **Fonts**: Space Grotesk for headings/body, KaTeX for math
 - **No emoji in production code** unless user explicitly requests
 
@@ -118,7 +123,9 @@ bash deploy/setup.sh
 
 ## Testing & Verification
 
-- No automated test suite currently — verify manually:
+- 运行自动测试：
+  - `pytest -q`
+- 同时执行以下人工验证：
   - Open `index.html` in browser, check all 5 tabs load correctly
   - Verify theme switching works (brand hover dropdown + About page)
   - Check subscription tier badge display and feature locking

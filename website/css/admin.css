@@ -1,0 +1,133 @@
+.admin-body {
+  min-height: 100vh;
+  background: var(--bg-0);
+  color: var(--tx-1);
+}
+
+.admin-header {
+  height: 64px;
+  border-bottom: 1px solid var(--line);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 32px;
+}
+
+.admin-brand {
+  color: #fff;
+  text-decoration: none;
+  font-family: var(--font-display);
+  font-size: 20px;
+  font-weight: 600;
+}
+
+.admin-brand span,
+.admin-kicker {
+  color: var(--accent);
+}
+
+.admin-shell {
+  width: min(1180px, calc(100% - 32px));
+  margin: 40px auto 80px;
+}
+
+.admin-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: 20px;
+}
+
+.admin-card {
+  border: 1px solid var(--line);
+  background: var(--bg-1);
+  padding: 28px;
+  margin-bottom: 20px;
+}
+
+.auth-card {
+  width: min(460px, 100%);
+  margin: 80px auto;
+}
+
+.admin-card h1,
+.admin-card h2 {
+  margin: 6px 0 16px;
+  font-family: var(--font-display);
+}
+
+.admin-kicker {
+  margin: 0;
+  font-family: var(--font-display);
+  font-size: 11px;
+  letter-spacing: .12em;
+}
+
+.admin-muted,
+.admin-status {
+  color: var(--tx-2);
+  line-height: 1.7;
+}
+
+.admin-error {
+  min-height: 20px;
+  color: var(--err);
+}
+
+.admin-card label {
+  display: block;
+  margin: 18px 0;
+  color: var(--tx-2);
+  font-size: 12px;
+}
+
+.admin-card input {
+  display: block;
+  box-sizing: border-box;
+  width: 100%;
+  margin-top: 8px;
+  padding: 12px;
+  border: 1px solid var(--line-strong);
+  background: var(--bg-2);
+  color: #fff;
+}
+
+.admin-list {
+  display: grid;
+  gap: 10px;
+}
+
+.admin-row {
+  border: 1px solid var(--line);
+  background: var(--bg-2);
+  padding: 14px;
+}
+
+.admin-row-meta {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  color: var(--tx-3);
+  font-size: 11px;
+}
+
+.admin-row-actions {
+  display: flex;
+  gap: 8px;
+  margin-top: 12px;
+}
+
+.admin-card-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.review-card {
+  margin-top: 20px;
+}
+
+@media (max-width: 760px) {
+  .admin-header { padding: 0 16px; }
+  .admin-grid { grid-template-columns: 1fr; }
+  .admin-card { padding: 20px; }
+}

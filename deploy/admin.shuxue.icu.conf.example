@@ -1,0 +1,45 @@
+# 启用前必须先为 admin.shuxue.icu 配置 DNS 和独立 SSL 证书。
+server {
+    listen 80;
+    listen [::]:80;
+    server_name admin.shuxue.icu;
+    return 301 https://admin.shuxue.icu$request_uri;
+}
+
+server {
+    listen 443 ssl;
+    listen [::]:443 ssl;
+    http2 on;
+    server_name admin.shuxue.icu;
+
+    ssl_certificate /etc/nginx/ssl/admin.shuxue.icu.pem;
+    ssl_certificate_key /etc/nginx/ssl/admin.shuxue.icu.key;
+    ssl_protocols TLSv1.2 TLSv1.3;
+
+    add_header Strict-Transport-Security "max-age=31536000; includeSubDomains" always;
+    add_header X-Content-Type-Options "nosniff" always;
+    add_header Referrer-Policy "same-origin" always;
+    add_header X-Frame-Options "DENY" always;
+
+    root /var/www/shuxue/website;
+
+    location = / {
+        try_files /admin.html =404;
+    }
+    location = /admin.html {
+        try_files /admin.html =404;
+    }
+    location /css/ { expires 1h; }
+    location /js/ { expires 1h; }
+    location ^~ /scripts/ { return 404; }
+    location ^~ /uploads/ { return 404; }
+    location /api/ {
+        proxy_pass http://127.0.0.1:8000;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        client_max_body_size 50M;
+    }
+    location / { return 404; }
+}

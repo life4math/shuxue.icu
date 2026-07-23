@@ -1,0 +1,17 @@
+[Unit]
+Description=shuxue.icu AI Task Worker
+After=network.target postgresql.service shuxue.service
+
+[Service]
+User=nginx
+Group=nginx
+WorkingDirectory=/var/www/shuxue/website/scripts
+Environment="PATH=/var/www/shuxue/venv/bin:/usr/bin"
+Environment="SHUXUE_NODE_PATH=/usr/bin/node"
+EnvironmentFile=-/etc/shuxue/shuxue.env
+ExecStart=/var/www/shuxue/venv/bin/python worker.py
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target

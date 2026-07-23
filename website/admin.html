@@ -1,0 +1,67 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>教师后台 · shuxue.icu</title>
+  <link rel="stylesheet" href="css/style.css?v=20260723-admin-1">
+  <link rel="stylesheet" href="css/admin.css?v=20260723-admin-1">
+</head>
+<body class="admin-body">
+  <header class="admin-header">
+    <a class="admin-brand" href="index.html">shuxue<span>.icu</span></a>
+    <div>
+      <span id="admin-user"></span>
+      <button id="logout-button" class="btn-ghost" hidden>退出</button>
+    </div>
+  </header>
+
+  <main class="admin-shell">
+    <section id="login-panel" class="admin-card auth-card">
+      <p class="admin-kicker">TEACHER CONSOLE</p>
+      <h1>教师后台登录</h1>
+      <p class="admin-muted">题目上传、AI 提取和审核功能仅向授权教师开放。</p>
+      <form id="login-form">
+        <label>邮箱<input id="login-email" type="email" autocomplete="username" required></label>
+        <label>密码<input id="login-password" type="password" autocomplete="current-password" minlength="12" required></label>
+        <button class="btn-accent" type="submit">登录</button>
+        <p id="login-error" class="admin-error" role="alert"></p>
+      </form>
+    </section>
+
+    <section id="console-panel" hidden>
+      <div class="admin-grid">
+        <article class="admin-card">
+          <p class="admin-kicker">01 · UPLOAD</p>
+          <h2>上传教学资料</h2>
+          <p class="admin-muted">支持 PDF、图片、DOCX、TXT 和 Markdown。重复文件不会重复创建任务。</p>
+          <form id="upload-form">
+            <input id="upload-file" type="file" accept=".pdf,.png,.jpg,.jpeg,.webp,.docx,.txt,.md" required>
+            <button class="btn-accent" type="submit">上传并创建 AI 任务</button>
+          </form>
+          <p id="upload-status" class="admin-status" aria-live="polite"></p>
+        </article>
+
+        <article class="admin-card">
+          <p class="admin-kicker">02 · AI JOBS</p>
+          <h2>处理任务</h2>
+          <div id="job-list" class="admin-list"></div>
+        </article>
+      </div>
+
+      <article class="admin-card review-card">
+        <div class="admin-card-heading">
+          <div>
+            <p class="admin-kicker">03 · REVIEW</p>
+            <h2>待审核内容</h2>
+          </div>
+          <button id="refresh-button" class="btn-ghost">刷新</button>
+        </div>
+        <div id="review-list" class="admin-list"></div>
+      </article>
+    </section>
+  </main>
+
+  <script src="js/admin.js?v=20260723-admin-1"></script>
+</body>
+</html>
