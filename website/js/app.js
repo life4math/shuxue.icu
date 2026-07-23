@@ -1519,9 +1519,7 @@ function simpleMarkdown(md) {
 
 // ===== 初始化 =====
 document.addEventListener('DOMContentLoaded', () => {
-  initTheme();
-  buildThemeSwitcher();
-  buildBrandDropdown();
+  initThemeUI();
   addTierIndicatorToNavbar();
   enforceTierOnFeatureButtons();
   initLearning();

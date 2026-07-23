@@ -385,7 +385,7 @@ body {
 
 <!-- 左侧设计说明 -->
 <div class="prototype-side">
-  <div class="side-brand-wrap">
+  <div class="side-brand-wrap" aria-label="选择网站配色">
     <h1 class="side-brand">shuxue<span class="proto">.icu</span></h1>
     <div class="side-brand-dropdown" id="side-brand-dropdown"></div>
   </div>
@@ -1153,11 +1153,7 @@ function leaveClass() {
 </script>
 <script src="js/themes.js"></script>
 <script>
-  // Apply saved theme to student.html
-  document.addEventListener('DOMContentLoaded', () => {
-    initTheme();
-    buildSideBrandDropdown();
-  });
+  document.addEventListener('DOMContentLoaded', initThemeUI, { once: true });
 </script>
 </body>
 </html>

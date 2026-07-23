@@ -510,11 +510,12 @@
 
 <!-- Navbar -->
 <nav class="navbar">
-  <div class="nav-brand">
+  <div class="nav-brand" aria-label="选择网站配色">
     <div class="nav-title">
       <h1>shuxue<span class="proto">.icu</span></h1>
     </div>
     <span class="nav-subtitle">MATH RESEARCH PLATFORM</span>
+    <div class="brand-dropdown" id="brand-dropdown" aria-label="配色选项"></div>
   </div>
   <a href="index.html" style="font-family:var(--font-display);font-size:12px;font-weight:500;letter-spacing:.08em;color:var(--tx-2);border:1px solid var(--line);padding:8px 16px;text-decoration:none;transition:var(--transition)">BACK TO APP</a>
 </nav>
@@ -818,6 +819,7 @@
   <p>shuxue.icu · MATH RESEARCH PLATFORM · 教研工具 · 合规运营 · POWERED BY LI WENJIN</p>
 </footer>
 
+<script src="js/themes.js"></script>
 <script>
 function switchBilling(type) {
   const btns = document.querySelectorAll('.tier-toggle button');
@@ -851,3 +853,4 @@ function showToast(msg) {
 </script>
 </body>
 </html>
+

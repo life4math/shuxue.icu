@@ -77,6 +77,24 @@ const THEMES = {
 };
 
 let currentTheme = THEMES.CYAN;
+let themeUIInitialized = false;
+
+function getSavedTheme() {
+  try {
+    const saved = localStorage.getItem('shuxue-theme');
+    return THEMES[saved] ? saved : 'CYAN';
+  } catch (_) {
+    return 'CYAN';
+  }
+}
+
+function saveTheme(themeName) {
+  try {
+    localStorage.setItem('shuxue-theme', themeName);
+  } catch (_) {
+    // 无痕模式或禁用存储时仍允许当前页面切换主题
+  }
+}
 
 /* --- Apply Theme --- */
 function applyTheme(themeName) {
@@ -115,20 +133,21 @@ function applyTheme(themeName) {
   updateBrandDropdown(t.name);
 
   // Save to localStorage
-  localStorage.setItem('shuxue-theme', t.name);
+  document.documentElement.dataset.theme = t.name;
+  saveTheme(t.name);
 }
 
 /* --- Init Theme (restore from localStorage) --- */
 function initTheme() {
-  const saved = localStorage.getItem('shuxue-theme') || 'CYAN';
-  applyTheme(saved);
+  applyTheme(getSavedTheme());
 
   // Cross-tab sync: listen for localStorage changes from other tabs
-  window.addEventListener('storage', (e) => {
+  if (!window._shuxueThemeStorageBound) window.addEventListener('storage', (e) => {
     if (e.key === 'shuxue-theme' && e.newValue) {
       applyTheme(e.newValue);
     }
   });
+  window._shuxueThemeStorageBound = true;
 }
 
 /* --- Theme Switcher UI (about page) --- */
@@ -211,23 +230,63 @@ function buildSideBrandDropdown() {
 
 /* --- Shared Dropdown Hover Controller --- */
 function setupDropdownHover(trigger, dropdown) {
-  if (!trigger || !dropdown) return;
+  if (!trigger || !dropdown || dropdown.dataset.hoverBound === 'true') return;
+  dropdown.dataset.hoverBound = 'true';
   let closeTimeout = null;
   const CLOSE_DELAY = 250; // ms buffer to allow mouse travel from trigger to dropdown
 
   function openDropdown() {
     clearTimeout(closeTimeout);
     dropdown.classList.add('open');
+    trigger.setAttribute('aria-expanded', 'true');
   }
 
   function scheduleClose() {
     closeTimeout = setTimeout(() => {
       dropdown.classList.remove('open');
+      trigger.setAttribute('aria-expanded', 'false');
     }, CLOSE_DELAY);
   }
 
+  trigger.setAttribute('aria-haspopup', 'menu');
+  trigger.setAttribute('aria-expanded', 'false');
+  if (!trigger.hasAttribute('tabindex')) trigger.tabIndex = 0;
+  dropdown.setAttribute('role', 'menu');
   trigger.addEventListener('mouseenter', openDropdown);
   trigger.addEventListener('mouseleave', scheduleClose);
+  trigger.addEventListener('focusin', openDropdown);
+  trigger.addEventListener('focusout', scheduleClose);
   dropdown.addEventListener('mouseenter', () => clearTimeout(closeTimeout));
   dropdown.addEventListener('mouseleave', scheduleClose);
+  dropdown.addEventListener('focusin', openDropdown);
+  dropdown.addEventListener('focusout', scheduleClose);
+  dropdown.addEventListener('click', scheduleClose);
+  trigger.addEventListener('keydown', (event) => {
+    if (event.key === 'Escape') {
+      dropdown.classList.remove('open');
+      trigger.setAttribute('aria-expanded', 'false');
+      trigger.focus();
+    } else if (event.key === 'Enter' || event.key === ' ') {
+      event.preventDefault();
+      openDropdown();
+      dropdown.querySelector('button')?.focus();
+    }
+  });
 }
+
+/* --- Standalone bootstrap: theme UI must not depend on app.js succeeding --- */
+function initThemeUI() {
+  if (themeUIInitialized) return;
+  themeUIInitialized = true;
+  initTheme();
+  buildThemeSwitcher();
+  buildBrandDropdown();
+  buildSideBrandDropdown();
+}
+
+if (document.readyState === 'loading') {
+  document.addEventListener('DOMContentLoaded', initThemeUI, { once: true });
+} else {
+  initThemeUI();
+}
+
