@@ -1,6 +1,6 @@
 #!/bin/bash
 # ============================================================
-# shuxue.icu 一键部署脚本 — Alibaba Cloud Linux 3
+# shuxue.icu 一键部署脚本 — Alibaba Cloud Linux 3 (等保2.0三级版)
 # 用法:
 #   公开仓库:  sudo bash setup.sh
 #   私有仓库:  sudo GITHUB_TOKEN=ghp_xxxx bash setup.sh
@@ -17,7 +17,7 @@ NC='\033[0m'
 
 echo -e "${CYAN}========================================${NC}"
 echo -e "${CYAN}  shuxue.icu 部署脚本${NC}"
-echo -e "${CYAN}  Alibaba Cloud Linux 3${NC}"
+echo -e "${CYAN}  Alibaba Cloud Linux 3 (等保2.0)${NC}"
 echo -e "${CYAN}========================================${NC}"
 echo ""
 
@@ -36,31 +36,77 @@ REPO_URL="https://github.com/life4math/shuxue.icu.git"
 if [ -n "$GITHUB_TOKEN" ]; then
     REPO_URL="https://life4math:${GITHUB_TOKEN}@github.com/life4math/shuxue.icu.git"
     echo -e "${YELLOW}  使用 GITHUB_TOKEN 进行私有仓库认证${NC}"
+    echo ""
 fi
 
 # ========================================
-# 第0步: 移除冲突的 Apache/httpd (我们用 Nginx)
+# 第0步: 移除 dnf exclude 过滤 (等保2.0三级版的核心问题)
 # ========================================
-echo -e "${YELLOW}[0/8] 检查并移除 Apache/httpd 冲突...${NC}"
+echo -e "${YELLOW}[0/8] 移除 dnf exclude 过滤规则...${NC}"
+
+# 等保2.0三级版在 dnf.conf 和 repo 文件中设置了 exclude= 行
+# 阻止了 nginx/httpd/php 等包的安装和移除
+# 解决方案: 注释掉所有 exclude= 和 excludepkgs= 行
+
+CHANGED=0
+
+# 检查并注释 dnf.conf
+if grep -q '^exclude=' /etc/dnf/dnf.conf 2>/dev/null; then
+    echo -e "  发现 /etc/dnf/dnf.conf 中的 exclude 规则，注释掉..."
+    sed -i 's/^exclude=/#exclude=/' /etc/dnf/dnf.conf
+    CHANGED=1
+fi
+
+if grep -q '^excludepkgs=' /etc/dnf/dnf.conf 2>/dev/null; then
+    sed -i 's/^excludepkgs=/#excludepkgs=/' /etc/dnf/dnf.conf
+    CHANGED=1
+fi
+
+# 检查并注释所有 repo 文件
+for f in /etc/yum.repos.d/*.repo; do
+    if [ -f "$f" ] && grep -q '^exclude=' "$f" 2>/dev/null; then
+        echo -e "  发现 $f 中的 exclude 规则，注释掉..."
+        sed -i 's/^exclude=/#exclude=/' "$f"
+        CHANGED=1
+    fi
+    if [ -f "$f" ] && grep -q '^excludepkgs=' "$f" 2>/dev/null; then
+        sed -i 's/^excludepkgs=/#excludepkgs=/' "$f"
+        CHANGED=1
+    fi
+done
+
+if [ "$CHANGED" -eq 1 ]; then
+    echo -e "${GREEN}  -> exclude 规则已注释，刷新 dnf 缓存...${NC}"
+    dnf clean all
+    dnf makecache
+else
+    echo -e "${GREEN}  -> 未发现 exclude 规则，跳过${NC}"
+fi
+echo ""
+
+# ========================================
+# 第0b步: 移除冲突的 Apache/httpd (我们用 Nginx)
+# ========================================
+echo -e "${YELLOW}[0b/8] 移除 Apache/httpd...${NC}"
 
 if rpm -q httpd >/dev/null 2>&1; then
     echo -e "  检测到 httpd (Apache)，停止并移除..."
     systemctl stop httpd 2>/dev/null || true
     systemctl disable httpd 2>/dev/null || true
 
-    # 方法1: dnf remove 绕过 exclude 过滤
-    dnf remove -y --disableexcludes=all httpd php php-cli php-common 2>/dev/null || {
-        echo -e "${YELLOW}  dnf remove 失败，使用 rpm 强制移除...${NC}"
-        # 方法2: rpm 直接移除 (绕过 dnf 的 exclude 过滤)
+    # 现在 exclude 已移除，dnf remove 应该能工作
+    dnf remove -y httpd httpd-filesystem httpd-tools php php-cli php-common 2>/dev/null || {
+        echo -e "${YELLOW}  dnf remove 部分失败，使用 rpm 强制移除...${NC}"
         rpm -e --nodeps httpd 2>/dev/null || true
+        rpm -e --nodeps httpd-filesystem 2>/dev/null || true
+        rpm -e --nodeps httpd-tools 2>/dev/null || true
         rpm -e --nodeps php 2>/dev/null || true
         rpm -e --nodeps php-cli 2>/dev/null || true
         rpm -e --nodeps php-common 2>/dev/null || true
     }
 
-    # 验证是否已移除
     if rpm -q httpd >/dev/null 2>&1; then
-        echo -e "${YELLOW}  httpd 仍存在，但已停止服务 (不影响 Nginx 部署)${NC}"
+        echo -e "${YELLOW}  httpd 仍存在 (已停止服务，不影响 Nginx)${NC}"
     else
         echo -e "${GREEN}  -> httpd/php 已移除${NC}"
     fi
@@ -74,21 +120,18 @@ echo ""
 # ========================================
 echo -e "${YELLOW}[1/8] 安装系统依赖...${NC}"
 
-# 安全更新 (跳过有冲突的包)
+# 安全更新 (现在 exclude 已移除，应该不再冲突)
 dnf upgrade-minimal --security -y --skip-broken 2>/dev/null || {
     echo -e "${YELLOW}  安全更新部分跳过，不影响部署${NC}"
 }
 
+# 安装 nginx + python39 + nodejs + git
+# 使用 python39 而非 python3 (因为系统默认 python3 是 3.6，太旧)
 dnf install -y epel-release 2>/dev/null || true
-dnf install -y --skip-broken nginx python3 python3-pip nodejs git 2>/dev/null || {
-    echo -e "${RED}  安装失败，尝试更新 dnf 缓存...${NC}"
-    dnf clean all
-    dnf makecache
-    dnf install -y --skip-broken nginx python3 python3-pip nodejs git
-}
+dnf install -y nginx python39 python39-pip nodejs git
 
-echo -e "${GREEN}  -> nginx, python3, nodejs, git 已安装${NC}"
-echo -e "  Python: $(python3 --version 2>&1)"
+echo -e "${GREEN}  -> 系统依赖安装完成${NC}"
+echo -e "  Python: $(python3.9 --version 2>&1)"
 echo -e "  Node:   $(node --version 2>&1)"
 echo -e "  Nginx:  $(nginx -v 2>&1)"
 echo ""
@@ -98,13 +141,12 @@ echo ""
 # ========================================
 echo -e "${YELLOW}[2/8] 获取项目代码...${NC}"
 
-# 克隆到 PROJECT_DIR (不是 WEBSITE_DIR，避免路径嵌套)
 if [ -d "$PROJECT_DIR/.git" ]; then
     echo -e "  项目已存在，执行 git pull 更新..."
     cd "$PROJECT_DIR"
     if [ -n "$GITHUB_TOKEN" ]; then
+        git remote set-url origin "https://life4math:${GITHUB_TOKEN}@github.com/life4math/shuxue.icu.git"
         git pull origin main 2>/dev/null || true
-        # 清理 token
         git remote set-url origin https://github.com/life4math/shuxue.icu.git
     else
         git pull origin main || true
@@ -124,15 +166,16 @@ echo -e "  Web 文件: $WEBSITE_DIR"
 echo ""
 
 # ========================================
-# 第3步: 创建 Python 虚拟环境
+# 第3步: 创建 Python 虚拟环境 (使用 python3.9)
 # ========================================
-echo -e "${YELLOW}[3/8] 创建 Python 虚拟环境...${NC}"
+echo -e "${YELLOW}[3/8] 创建 Python 3.9 虚拟环境...${NC}"
 
-python3 -m venv "$VENV_DIR"
+# 使用 python3.9 创建 venv (不是 python3，因为系统 python3 是 3.6)
+python3.9 -m venv "$VENV_DIR"
 source "$VENV_DIR/bin/activate"
 pip install --upgrade pip -q
 pip install -r "$PROJECT_DIR/requirements.txt" -q || {
-    echo -e "${YELLOW}  requirements.txt 未找到，手动安装...${NC}"
+    echo -e "${YELLOW}  requirements.txt 安装失败，尝试手动安装...${NC}"
     pip install flask gunicorn pdfplumber mammoth openai
 }
 
@@ -152,7 +195,7 @@ else
     cp "$WEBSITE_DIR/scripts/config.example.json" "$CONFIG_FILE"
     echo -e "${YELLOW}  已从模板创建 config.json${NC}"
     echo -e "${YELLOW}  如需 LLM 功能，请编辑 $CONFIG_FILE 填入 API Key${NC}"
-    echo -e "${YELLOW}  无 API Key 时将使用 mock 模式（不影响基础功能）${NC}"
+    echo -e "${YELLOW}  无 API Key 时将使用 mock 模式${NC}"
 fi
 echo ""
 
