@@ -345,6 +345,40 @@ def test_static_knowledge_seed_parser_is_utf8_safe():
     assert contents["CALC-01-02"]["sections"]
 
 
+def test_bootstrap_seed_only_fills_missing_content(tmp_path):
+    app, db_module = build_app(tmp_path)
+    email, _ = create_user(db_module, "admin@example.com", "correct-admin-password", role="admin")
+    sys.modules.pop("seed_knowledge", None)
+    seed_knowledge = importlib.import_module("seed_knowledge")
+    db = db_module.SessionLocal()
+    user = db.scalar(select(db_module.User).where(db_module.User.email == email))
+    contents = {
+        "FUNC-01-01": {
+            "title": "集合",
+            "sections": [{"title": "定义", "items": [{"text": "首次引导内容"}]}],
+        }
+    }
+    first = seed_knowledge.seed_contents(db, user, contents, bootstrap_missing=True)
+    db.commit()
+    assert first == {"created": 1, "updated": 0, "skipped": 0, "total": 1}
+
+    snapshot = db.get(db_module.PublishedKnowledge, "FUNC-01-01")
+    snapshot.payload = {
+        "title": "集合",
+        "sections": [{"title": "定义", "items": [{"text": "教师修改后的正式内容"}]}],
+    }
+    db.commit()
+    second = seed_knowledge.seed_contents(db, user, contents, bootstrap_missing=True)
+    db.commit()
+    assert second == {"created": 0, "updated": 0, "skipped": 1, "total": 1}
+    assert db.get(db_module.PublishedKnowledge, "FUNC-01-01").payload["sections"][0]["items"][0]["text"] == "教师修改后的正式内容"
+    db_module.SessionLocal.remove()
+
+    public = app.test_client().get("/api/v1/public/knowledge/FUNC-01-01")
+    assert public.status_code == 200
+    assert public.get_json()["knowledge"]["payload"]["sections"][0]["items"][0]["text"] == "教师修改后的正式内容"
+
+
 def test_health_and_readiness(tmp_path):
     app, _ = build_app(tmp_path)
     client = app.test_client()

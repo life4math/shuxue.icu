@@ -39,58 +39,96 @@ def read_static_content():
     return json.loads(result.stdout)
 
 
+def seed_contents(db, user, contents, status="published", bootstrap_missing=False):
+    created = 0
+    updated = 0
+    skipped = 0
+    for node_id, payload in contents.items():
+        item = db.scalar(select(KnowledgeDocument).where(KnowledgeDocument.node_id == node_id))
+        snapshot = db.get(PublishedKnowledge, node_id)
+        if bootstrap_missing and item:
+            if item.status == "published" and not snapshot:
+                snapshot = PublishedKnowledge(
+                    node_id=node_id,
+                    title=item.title,
+                    version=item.version,
+                    payload=item.payload,
+                    published_by=item.published_by,
+                    published_at=item.published_at or item.updated_at or item.created_at,
+                )
+                db.add(snapshot)
+                updated += 1
+            else:
+                skipped += 1
+            continue
+
+        if item:
+            item.title = payload["title"]
+            item.payload = payload
+            item.status = status
+            item.updated_by = user.id
+            if status == "published":
+                item.published_by = user.id
+                item.published_at = utcnow()
+            updated += 1
+        else:
+            item = KnowledgeDocument(
+                node_id=node_id,
+                title=payload["title"],
+                payload=payload,
+                status=status,
+                version=1,
+                created_by=user.id,
+                updated_by=user.id,
+                published_by=user.id if status == "published" else None,
+                published_at=utcnow() if status == "published" else None,
+            )
+            db.add(item)
+            created += 1
+        if status == "published":
+            if not snapshot:
+                snapshot = PublishedKnowledge(node_id=node_id)
+                db.add(snapshot)
+            snapshot.title = payload["title"]
+            snapshot.version = item.version or 1
+            snapshot.payload = payload
+            snapshot.published_by = user.id
+            snapshot.published_at = item.published_at or utcnow()
+    return {"created": created, "updated": updated, "skipped": skipped, "total": len(contents)}
+
+
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument("--email", required=True, help="已有管理员账号邮箱")
+    parser.add_argument("--email", help="已有管理员账号邮箱；省略时自动选择首个启用的管理员")
     parser.add_argument("--status", choices=["draft", "published"], default="published")
+    parser.add_argument(
+        "--bootstrap-missing",
+        action="store_true",
+        help="只补齐不存在的知识点和发布快照，绝不覆盖已有内容",
+    )
     args = parser.parse_args()
 
     init_database()
     contents = read_static_content()
     db = SessionLocal()
     try:
-        user = db.scalar(select(User).where(User.email == args.email.strip().lower()))
+        user = None
+        if args.email:
+            user = db.scalar(select(User).where(User.email == args.email.strip().lower()))
+        else:
+            user = db.scalar(
+                select(User)
+                .where(User.role == "admin", User.is_active.is_(True))
+                .order_by(User.created_at)
+            )
         if not user:
-            raise SystemExit("指定邮箱不存在，请先运行 init_platform.py")
-        created = 0
-        updated = 0
-        for node_id, payload in contents.items():
-            item = db.scalar(select(KnowledgeDocument).where(KnowledgeDocument.node_id == node_id))
-            if item:
-                item.title = payload["title"]
-                item.payload = payload
-                item.status = args.status
-                item.updated_by = user.id
-                if args.status == "published":
-                    item.published_by = user.id
-                    item.published_at = utcnow()
-                updated += 1
-            else:
-                item = KnowledgeDocument(
-                    node_id=node_id,
-                    title=payload["title"],
-                    payload=payload,
-                    status=args.status,
-                    version=1,
-                    created_by=user.id,
-                    updated_by=user.id,
-                    published_by=user.id if args.status == "published" else None,
-                    published_at=utcnow() if args.status == "published" else None,
-                )
-                db.add(item)
-                created += 1
-            if args.status == "published":
-                snapshot = db.get(PublishedKnowledge, node_id)
-                if not snapshot:
-                    snapshot = PublishedKnowledge(node_id=node_id)
-                    db.add(snapshot)
-                snapshot.title = payload["title"]
-                snapshot.version = item.version or 1
-                snapshot.payload = payload
-                snapshot.published_by = user.id
-                snapshot.published_at = item.published_at or utcnow()
+            if args.bootstrap_missing:
+                print(json.dumps({"created": 0, "updated": 0, "skipped": len(contents), "reason": "no active admin"}))
+                return
+            raise SystemExit("指定邮箱不存在或没有启用的管理员，请先运行 init_platform.py")
+        result = seed_contents(db, user, contents, args.status, args.bootstrap_missing)
         db.commit()
-        print(json.dumps({"created": created, "updated": updated, "total": len(contents)}, ensure_ascii=False))
+        print(json.dumps(result, ensure_ascii=False))
     finally:
         SessionLocal.remove()
 
