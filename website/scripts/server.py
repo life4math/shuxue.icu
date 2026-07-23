@@ -385,7 +385,32 @@ def process_file(filepath, filename):
 
     elif ext in {".txt", ".md", ".markdown"}:
         content = parse_text(filepath)
-  �n��G����ƭy�────────────────
+        q_result = call_llm(QUESTION_PROMPT + content[:4000])
+        if "questions" in q_result:
+            for q in q_result["questions"]:
+                rid = next_id("R")
+                items.append({
+                    "id": rid, "status": "pending", "source": "text_parse",
+                    "sourceFile": filename,
+                    "extractedAt": datetime.datetime.now().isoformat(),
+                    "data": q, "aiConfidence": 0.93, "reviewNotes": ""
+                })
+
+    return items
+
+def _split_content(content, max_chars=2000):
+    paragraphs = content.split("\n\n")
+    chunks, current = [], ""
+    for p in paragraphs:
+        if len(current) + len(p) > max_chars:
+            if current: chunks.append(current)
+            current = p
+        else:
+            current += "\n\n" + p
+    if current: chunks.append(current)
+    return chunks or [content[:max_chars]]
+
+# ─── data.js 读写 ────────────────────────────────────
 def read_data_js():
     """读取 data.js，返回三个数组的 JSON 对象
     data.js 使用 JS 对象语法（无引号 key），需要用 Node.js 解析"""
