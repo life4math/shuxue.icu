@@ -431,13 +431,15 @@ function showKnowledgeDetail(id) {
   if (!node) return;
 
   const panel = document.getElementById('knowledge-detail');
+  const content = getKnowledgeDetail(node);
 
   panel.innerHTML = `
     <div class="knowledge-detail-heading">
       <span>${node.id}</span>
-      <h3>${node.name}</h3>
-      <p>${node.children ? '这是知识清单中的结构节点，用于组织下级知识内容。' : '这是 2027 年高考数学知识清单中的基础知识点。'}</p>
+      <h3>${content.title || node.name}</h3>
+      <p>${node.children ? '展开下级知识点，查看定义、结论和公式。' : '知识正文支持普通文字与 KaTeX 数学公式。'}</p>
     </div>
+    ${renderKnowledgeDetailBody(content)}
     <div class="detail-section">
       <h4>知识信息</h4>
       <div class="detail-info-grid">
@@ -476,7 +478,100 @@ function showKnowledgeDetail(id) {
         `).join('')}
       </div>
     </div>` : ''}
+    ${!node.children ? `
+    <div class="knowledge-katex-lab">
+      <div class="knowledge-katex-heading">
+        <div>
+          <span>KATEX INPUT</span>
+          <h4>公式试写</h4>
+        </div>
+        <small>仅在当前页面预览，不会修改知识库</small>
+      </div>
+      <textarea id="knowledge-katex-input" rows="3" spellcheck="false"
+        placeholder="例如：\\frac{-b\\pm\\sqrt{b^2-4ac}}{2a}"
+        oninput="previewKnowledgeKatex(this.value)"></textarea>
+      <div class="knowledge-katex-preview" id="knowledge-katex-preview">
+        输入 KaTeX 源码后在这里预览
+      </div>
+    </div>` : ''}
   `;
+}
+
+function getKnowledgeDetail(node) {
+  if (typeof knowledgeDetails !== 'undefined' && knowledgeDetails[node.id]) {
+    return knowledgeDetails[node.id];
+  }
+  return {
+    title: node.name,
+    sections: [{
+      title: '知识要点',
+      items: [
+        { text: `掌握${node.name}的定义、基本性质和常用结论。` },
+        { text: '结合教材与课程内容补充公式、条件和典型推论。' }
+      ]
+    }]
+  };
+}
+
+function renderKnowledgeDetailBody(content) {
+  return `<div class="knowledge-content-outline">
+    ${content.sections.map(section => `
+      <section class="knowledge-content-section">
+        <div class="knowledge-content-marker"></div>
+        <div class="knowledge-content-copy">
+          <h4>${escapeKnowledgeText(section.title)}</h4>
+          <div class="knowledge-content-items">
+            ${section.items.map(renderKnowledgeItem).join('')}
+          </div>
+        </div>
+      </section>
+    `).join('')}
+  </div>`;
+}
+
+function renderKnowledgeItem(item) {
+  const math = item.math ? renderKatexSource(item.math) : '';
+  const text = item.text ? `<span>${escapeKnowledgeText(item.text)}</span>` : '';
+  const suffix = item.suffixMath ? renderKatexSource(item.suffixMath) : '';
+  return `<div class="knowledge-content-item">
+    <span class="knowledge-content-bullet"></span>
+    <div>${math}${text}${suffix}</div>
+  </div>`;
+}
+
+function renderKatexSource(source, displayMode = false) {
+  if (typeof katex === 'undefined') return `<code>${escapeKnowledgeText(source)}</code>`;
+  try {
+    return katex.renderToString(source, {
+      throwOnError: false,
+      displayMode,
+      trust: false,
+      strict: 'warn'
+    });
+  } catch (_) {
+    return `<code>${escapeKnowledgeText(source)}</code>`;
+  }
+}
+
+function escapeKnowledgeText(value) {
+  return String(value)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
+
+function previewKnowledgeKatex(source) {
+  const target = document.getElementById('knowledge-katex-preview');
+  if (!target) return;
+  if (!source.trim()) {
+    target.textContent = '输入 KaTeX 源码后在这里预览';
+    target.classList.remove('has-formula');
+    return;
+  }
+  target.innerHTML = renderKatexSource(source, true);
+  target.classList.add('has-formula');
 }
 
 // ===== 方法库 =====
