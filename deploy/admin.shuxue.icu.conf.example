@@ -3,7 +3,13 @@ server {
     listen 80;
     listen [::]:80;
     server_name admin.shuxue.icu;
-    return 301 https://admin.shuxue.icu$request_uri;
+
+    location ^~ /.well-known/acme-challenge/ {
+        root /var/www/shuxue/website;
+    }
+    location / {
+        return 301 https://admin.shuxue.icu$request_uri;
+    }
 }
 
 server {
@@ -23,6 +29,9 @@ server {
 
     root /var/www/shuxue/website;
 
+    location ^~ /.well-known/acme-challenge/ {
+        root /var/www/shuxue/website;
+    }
     location = / {
         try_files /admin.html =404;
     }
