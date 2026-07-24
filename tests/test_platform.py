@@ -60,7 +60,7 @@ def test_alembic_baseline_creates_and_versions_schema(tmp_path):
     assert {"next_attempt_at", "heartbeat_at"} <= ai_job_columns
     with engine.connect() as connection:
         assert connection.execute(text("SELECT version_num FROM alembic_version")).scalar_one() == (
-            "0003_dynamic_knowledge_graph"
+            "0004_lesson_prep"
         )
         assert connection.execute(text("SELECT COUNT(*) FROM knowledge_nodes")).scalar_one() == 71
         assert connection.execute(
@@ -76,6 +76,10 @@ def test_alembic_baseline_creates_and_versions_schema(tmp_path):
         "knowledge_relations",
         "published_knowledge_nodes",
         "published_knowledge_relations",
+        "lecture_courses",
+        "lectures",
+        "lecture_versions",
+        "published_lectures",
     } <= tables
 
 
@@ -811,6 +815,218 @@ def test_existing_published_knowledge_is_backfilled_on_upgrade(tmp_path):
     assert public.status_code == 200
     assert public.get_json()["knowledge"]["version"] == 3
     assert public.get_json()["knowledge"]["payload"]["sections"][0]["items"][0]["text"] == "旧版本已发布正文"
+
+
+def test_lesson_prep_draft_publish_version_and_public_snapshot(tmp_path):
+    app, db_module = build_app(tmp_path)
+    email, password = create_user(db_module)
+    client = app.test_client()
+    csrf = login(client, email, password)
+    headers = {"X-CSRF-Token": csrf, "Content-Type": "application/json"}
+
+    course_response = client.post(
+        "/api/v1/admin/lecture-courses",
+        json={
+            "title": "函数专题",
+            "grade_label": "高三一轮",
+            "description": "公开讲义测试课程",
+        },
+        headers=headers,
+    )
+    assert course_response.status_code == 201
+    course = course_response.get_json()["course"]
+
+    created_response = client.post(
+        "/api/v1/admin/lectures",
+        json={
+            "course_id": course["id"],
+            "title": "函数的单调性",
+            "slug": "function-monotonicity",
+        },
+        headers=headers,
+    )
+    assert created_response.status_code == 201
+    lecture = created_response.get_json()["lecture"]
+    assert lecture["version"] == 1
+    assert lecture["status"] == "draft"
+
+    payload_v2 = {
+        "sections": [
+            {
+                "id": "sec_intro",
+                "title": "概念与判定",
+                "sort_order": 0,
+                "blocks": [
+                    {
+                        "id": "blk_text",
+                        "type": "text",
+                        "text": "先观察函数在区间上的变化。",
+                    },
+                    {
+                        "id": "blk_math",
+                        "type": "math",
+                        "latex": "f'(x)>0",
+                        "caption": "单调递增的充分条件",
+                    },
+                    {
+                        "id": "blk_example",
+                        "type": "example",
+                        "title": "例题",
+                        "stem": "判断函数的单调区间。",
+                        "answer": "求导并讨论导数符号。",
+                    },
+                ],
+            }
+        ]
+    }
+    saved_response = client.put(
+        f"/api/v1/admin/lectures/{lecture['id']}/draft",
+        json={
+            "version": 1,
+            "title": "函数的单调性",
+            "summary": "从图像直观过渡到导数判定。",
+            "payload": payload_v2,
+        },
+        headers=headers,
+    )
+    assert saved_response.status_code == 200
+    lecture = saved_response.get_json()["lecture"]
+    assert lecture["version"] == 2
+
+    stale_response = client.put(
+        f"/api/v1/admin/lectures/{lecture['id']}/draft",
+        json={
+            "version": 1,
+            "title": "冲突版本",
+            "summary": "",
+            "payload": payload_v2,
+        },
+        headers=headers,
+    )
+    assert stale_response.status_code == 409
+    assert stale_response.get_json()["current_version"] == 2
+
+    assert client.get("/api/v1/public/lectures/function-monotonicity").status_code == 404
+    published_response = client.post(
+        f"/api/v1/admin/lectures/{lecture['id']}/publish",
+        headers={"X-CSRF-Token": csrf},
+    )
+    assert published_response.status_code == 200
+    public_v2 = client.get("/api/v1/public/lectures/function-monotonicity")
+    assert public_v2.status_code == 200
+    assert public_v2.get_json()["lecture"]["payload"]["sections"][0]["blocks"][1]["latex"] == "f'(x)>0"
+    public_etag = public_v2.headers["ETag"]
+    assert client.get(
+        "/api/v1/public/lectures/function-monotonicity",
+        headers={"If-None-Match": public_etag},
+    ).status_code == 304
+
+    payload_v3 = {
+        "sections": [
+            {
+                "id": "sec_intro",
+                "title": "概念与判定（修订）",
+                "sort_order": 0,
+                "blocks": [{"id": "blk_text", "type": "text", "text": "尚未发布的修订。"}],
+            }
+        ]
+    }
+    draft_response = client.put(
+        f"/api/v1/admin/lectures/{lecture['id']}/draft",
+        json={
+            "version": 2,
+            "title": "函数的单调性（修订中）",
+            "summary": "草稿不影响公开快照。",
+            "payload": payload_v3,
+        },
+        headers=headers,
+    )
+    assert draft_response.status_code == 200
+    assert draft_response.get_json()["lecture"]["version"] == 3
+    still_public = client.get("/api/v1/public/lectures/function-monotonicity")
+    assert still_public.get_json()["lecture"]["version"] == 2
+    assert still_public.headers["ETag"] == public_etag
+
+    versions = client.get(f"/api/v1/admin/lectures/{lecture['id']}/versions")
+    assert [item["version"] for item in versions.get_json()["items"]] == [3, 2, 1]
+    rolled_back = client.post(
+        f"/api/v1/admin/lectures/{lecture['id']}/rollback",
+        json={"version": 1},
+        headers=headers,
+    )
+    assert rolled_back.status_code == 200
+    assert rolled_back.get_json()["lecture"]["version"] == 4
+    assert rolled_back.get_json()["lecture"]["status"] == "draft"
+
+    unpublished = client.post(
+        f"/api/v1/admin/lectures/{lecture['id']}/unpublish",
+        headers={"X-CSRF-Token": csrf},
+    )
+    assert unpublished.status_code == 200
+    assert client.get("/api/v1/public/lectures/function-monotonicity").status_code == 404
+
+
+def test_lesson_prep_isolated_by_teacher_and_rejects_unsafe_blocks(tmp_path):
+    app, db_module = build_app(tmp_path)
+    first_email, first_password = create_user(
+        db_module,
+        "first@example.com",
+        "correct-first-password",
+    )
+    second_email, second_password = create_user(
+        db_module,
+        "second@example.com",
+        "correct-second-password",
+    )
+    first_client = app.test_client()
+    first_csrf = login(first_client, first_email, first_password)
+    first_headers = {"X-CSRF-Token": first_csrf, "Content-Type": "application/json"}
+    course = first_client.post(
+        "/api/v1/admin/lecture-courses",
+        json={"title": "教师一的课程"},
+        headers=first_headers,
+    ).get_json()["course"]
+    lecture = first_client.post(
+        "/api/v1/admin/lectures",
+        json={"course_id": course["id"], "title": "安全校验课次"},
+        headers=first_headers,
+    ).get_json()["lecture"]
+
+    unsafe = first_client.put(
+        f"/api/v1/admin/lectures/{lecture['id']}/draft",
+        json={
+            "version": 1,
+            "title": "安全校验课次",
+            "summary": "",
+            "payload": {
+                "sections": [
+                    {
+                        "id": "sec_one",
+                        "title": "图片",
+                        "blocks": [
+                            {
+                                "id": "blk_image",
+                                "type": "image",
+                                "url": "javascript:alert(1)",
+                            }
+                        ],
+                    }
+                ]
+            },
+        },
+        headers=first_headers,
+    )
+    assert unsafe.status_code == 400
+
+    second_client = app.test_client()
+    second_csrf = login(second_client, second_email, second_password)
+    assert second_client.get("/api/v1/admin/lecture-courses").get_json()["items"] == []
+    assert second_client.get(f"/api/v1/admin/lectures/{lecture['id']}").status_code == 404
+    assert second_client.patch(
+        f"/api/v1/admin/lecture-courses/{course['id']}",
+        json={"title": "越权修改"},
+        headers={"X-CSRF-Token": second_csrf, "Content-Type": "application/json"},
+    ).status_code == 404
 
 
 def test_static_knowledge_seed_parser_is_utf8_safe():

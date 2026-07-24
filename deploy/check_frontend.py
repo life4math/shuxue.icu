@@ -17,6 +17,12 @@ RESOURCE_ATTRIBUTES = {
     "img": "src",
     "source": "src",
 }
+PAGE_SCRIPTS = {
+    "admin.html": "admin.js",
+    "prep.html": "prep.js",
+    "lecture.html": "lecture.js",
+    "lectures.html": "lectures.js",
+}
 
 
 class ResourceParser(HTMLParser):
@@ -90,18 +96,19 @@ def main():
                     f"{source.relative_to(ROOT)}: <{tag}> 本地资源不存在: {reference}"
                 )
 
-        if source.name == "admin.html":
-            admin_js = WEBSITE / "js" / "admin.js"
+        script_name = PAGE_SCRIPTS.get(source.name)
+        if script_name:
+            page_js = WEBSITE / "js" / script_name
             referenced_ids = set(
                 re.findall(
                     r"""document\.getElementById\(\s*['"]([^'"]+)['"]\s*\)""",
-                    admin_js.read_text("utf-8"),
+                    page_js.read_text("utf-8"),
                 )
             )
             missing_ids = sorted(referenced_ids - set(parser.ids))
             for element_id in missing_ids:
                 errors.append(
-                    f"{source.relative_to(ROOT)}: admin.js 引用了不存在的 id: {element_id}"
+                    f"{source.relative_to(ROOT)}: {script_name} 引用了不存在的 id: {element_id}"
                 )
 
     if errors:

@@ -22,9 +22,13 @@ from platform_db import (
     KnowledgeNode,
     KnowledgeNodeVersion,
     KnowledgeRelation,
+    Lecture,
+    LectureCourse,
+    LectureVersion,
     PublishedKnowledge,
     PublishedKnowledgeNode,
     PublishedKnowledgeRelation,
+    PublishedLecture,
     PublishedContent,
     ReviewItem,
     SessionLocal,
@@ -47,6 +51,16 @@ KNOWLEDGE_NODE_TYPES = {"domain", "module", "topic", "concept", "skill"}
 KNOWLEDGE_TYPES = {"memory", "concept", "procedure", "design"}
 KNOWLEDGE_RELATION_TYPES = {"prerequisite", "related", "often_confused", "extends"}
 KNOWLEDGE_CODE_PATTERN = re.compile(r"^[A-Z][A-Z0-9-]{1,79}$")
+LECTURE_SLUG_PATTERN = re.compile(r"^[a-z0-9][a-z0-9-]{2,99}$")
+LECTURE_BLOCK_TYPES = {
+    "text",
+    "math",
+    "callout",
+    "example",
+    "question_ref",
+    "knowledge_ref",
+    "image",
+}
 
 
 def _json_error(message, status):
@@ -1534,6 +1548,616 @@ def publish_knowledge(db, node_id):
     _audit(db, request.current_user, "knowledge.publish", "knowledge", node.id, {"version": item.version})
     db.commit()
     return jsonify({"knowledge": _knowledge_json(item)})
+
+
+def _course_for_user(db, course_id):
+    course = db.get(LectureCourse, course_id)
+    if not course:
+        return None
+    if request.current_user.role != "admin" and course.owner_id != request.current_user.id:
+        return None
+    return course
+
+
+def _lecture_for_user(db, lecture_id):
+    lecture = db.get(Lecture, lecture_id)
+    if not lecture:
+        return None
+    if request.current_user.role != "admin" and lecture.owner_id != request.current_user.id:
+        return None
+    return lecture
+
+
+def _course_json(course, lecture_count=None):
+    payload = {
+        "id": course.id,
+        "owner_id": course.owner_id,
+        "title": course.title,
+        "grade_label": course.grade_label,
+        "description": course.description,
+        "status": course.status,
+        "sort_order": course.sort_order,
+        "created_at": course.created_at.isoformat(),
+        "updated_at": course.updated_at.isoformat(),
+    }
+    if lecture_count is not None:
+        payload["lecture_count"] = lecture_count
+    return payload
+
+
+def _lecture_json(lecture, course=None, include_payload=True):
+    payload = {
+        "id": lecture.id,
+        "course_id": lecture.course_id,
+        "owner_id": lecture.owner_id,
+        "title": lecture.title,
+        "slug": lecture.slug,
+        "summary": lecture.summary,
+        "status": lecture.status,
+        "sort_order": lecture.sort_order,
+        "version": lecture.version,
+        "created_at": lecture.created_at.isoformat(),
+        "updated_at": lecture.updated_at.isoformat(),
+        "published_at": lecture.published_at.isoformat() if lecture.published_at else None,
+    }
+    if include_payload:
+        payload["payload"] = lecture.payload
+    if course:
+        payload["course"] = _course_json(course)
+    return payload
+
+
+def _published_lecture_json(item, include_payload=True):
+    payload = {
+        "id": item.lecture_id,
+        "course_id": item.course_id,
+        "course_title": item.course_title,
+        "course_grade_label": item.course_grade_label,
+        "title": item.title,
+        "slug": item.slug,
+        "summary": item.summary,
+        "sort_order": item.sort_order,
+        "version": item.version,
+        "published_at": item.published_at.isoformat(),
+    }
+    if include_payload:
+        payload["payload"] = item.payload
+    return payload
+
+
+def _short_text(value, limit, field, required=False):
+    text_value = str(value or "").strip()
+    if required and not text_value:
+        raise ValueError(f"{field} is required")
+    if len(text_value) > limit:
+        raise ValueError(f"{field} is too long")
+    return text_value
+
+
+def _valid_lecture_payload(value):
+    if not isinstance(value, dict):
+        return None, "lecture payload must be an object"
+    sections = value.get("sections")
+    if not isinstance(sections, list) or not sections:
+        return None, "lecture must contain at least one section"
+    if len(sections) > 80:
+        return None, "lecture contains too many sections"
+
+    normalized_sections = []
+    block_count = 0
+    used_ids = set()
+    try:
+        for section_index, section in enumerate(sections):
+            if not isinstance(section, dict):
+                raise ValueError("section must be an object")
+            section_id = _short_text(section.get("id"), 80, "section id") or new_id("sec")
+            if section_id in used_ids:
+                raise ValueError("section and block ids must be unique")
+            used_ids.add(section_id)
+            title = _short_text(section.get("title"), 180, "section title", required=True)
+            blocks = section.get("blocks", [])
+            if not isinstance(blocks, list):
+                raise ValueError("section blocks must be an array")
+            normalized_blocks = []
+            for block in blocks:
+                if not isinstance(block, dict):
+                    raise ValueError("block must be an object")
+                block_count += 1
+                if block_count > 500:
+                    raise ValueError("lecture contains too many blocks")
+                block_id = _short_text(block.get("id"), 80, "block id") or new_id("blk")
+                if block_id in used_ids:
+                    raise ValueError("section and block ids must be unique")
+                used_ids.add(block_id)
+                block_type = _short_text(block.get("type"), 32, "block type", required=True)
+                if block_type not in LECTURE_BLOCK_TYPES:
+                    raise ValueError("unsupported lecture block type")
+                normalized = {"id": block_id, "type": block_type}
+                if block_type == "text":
+                    normalized["text"] = _short_text(block.get("text"), 20000, "text")
+                elif block_type == "math":
+                    normalized["latex"] = _short_text(
+                        block.get("latex"), 10000, "latex", required=True
+                    )
+                    normalized["caption"] = _short_text(block.get("caption"), 500, "caption")
+                elif block_type == "callout":
+                    normalized["title"] = _short_text(block.get("title"), 200, "callout title")
+                    normalized["text"] = _short_text(block.get("text"), 12000, "callout text")
+                    tone = _short_text(block.get("tone"), 20, "callout tone") or "note"
+                    normalized["tone"] = tone if tone in {"note", "key", "warning"} else "note"
+                elif block_type == "example":
+                    normalized["title"] = _short_text(block.get("title"), 200, "example title")
+                    normalized["stem"] = _short_text(block.get("stem"), 12000, "example stem")
+                    normalized["answer"] = _short_text(block.get("answer"), 12000, "example answer")
+                elif block_type == "question_ref":
+                    normalized["question_id"] = _short_text(
+                        block.get("question_id"), 80, "question id"
+                    )
+                    normalized["title"] = _short_text(block.get("title"), 200, "question title")
+                    normalized["stem"] = _short_text(block.get("stem"), 12000, "question stem")
+                elif block_type == "knowledge_ref":
+                    normalized["node_id"] = _short_text(
+                        block.get("node_id"), 80, "knowledge node id"
+                    )
+                    normalized["title"] = _short_text(block.get("title"), 200, "knowledge title")
+                    normalized["note"] = _short_text(block.get("note"), 6000, "knowledge note")
+                elif block_type == "image":
+                    url = _short_text(block.get("url"), 2048, "image url", required=True)
+                    if not (
+                        url.startswith("https://")
+                        or (not url.startswith(("//", "\\")) and ":" not in url.split("/")[0])
+                    ):
+                        raise ValueError("image url must use HTTPS or a relative path")
+                    normalized["url"] = url
+                    normalized["alt"] = _short_text(block.get("alt"), 300, "image alt")
+                    normalized["caption"] = _short_text(block.get("caption"), 500, "image caption")
+                normalized_blocks.append(normalized)
+            normalized_sections.append(
+                {
+                    "id": section_id,
+                    "title": title,
+                    "sort_order": int(section.get("sort_order", section_index)),
+                    "blocks": normalized_blocks,
+                }
+            )
+    except (TypeError, ValueError) as exc:
+        return None, str(exc)
+
+    normalized_payload = {"sections": normalized_sections}
+    if len(json.dumps(normalized_payload, ensure_ascii=False)) > 1024 * 1024:
+        return None, "lecture payload exceeds 1 MB"
+    return normalized_payload, None
+
+
+def _lecture_version_snapshot(lecture):
+    return {
+        "title": lecture.title,
+        "slug": lecture.slug,
+        "summary": lecture.summary,
+        "sort_order": lecture.sort_order,
+        "payload": lecture.payload,
+    }
+
+
+def _add_lecture_version(db, lecture, actor_id, reason):
+    db.add(
+        LectureVersion(
+            lecture_id=lecture.id,
+            version=lecture.version,
+            snapshot=_lecture_version_snapshot(lecture),
+            change_reason=reason,
+            created_by=actor_id,
+        )
+    )
+
+
+@admin_api.get("/admin/lecture-courses")
+@login_required
+@teacher_required
+def lecture_courses_list(db):
+    query = select(LectureCourse)
+    if request.current_user.role != "admin":
+        query = query.where(LectureCourse.owner_id == request.current_user.id)
+    rows = db.scalars(
+        query.order_by(LectureCourse.sort_order, LectureCourse.created_at)
+    ).all()
+    counts = dict(
+        db.execute(
+            select(Lecture.course_id, func.count(Lecture.id))
+            .where(Lecture.course_id.in_([row.id for row in rows]))
+            .group_by(Lecture.course_id)
+        ).all()
+    ) if rows else {}
+    return jsonify({"items": [_course_json(row, counts.get(row.id, 0)) for row in rows]})
+
+
+@admin_api.post("/admin/lecture-courses")
+@login_required
+@teacher_required
+@csrf_required
+def create_lecture_course(db):
+    body = request.get_json(silent=True) or {}
+    try:
+        title = _short_text(body.get("title"), 160, "course title", required=True)
+        grade_label = _short_text(body.get("grade_label"), 80, "grade label")
+        description = _short_text(body.get("description"), 4000, "description")
+        sort_order = int(body.get("sort_order", 0))
+    except (TypeError, ValueError) as exc:
+        return _json_error(str(exc), 400)
+    item = LectureCourse(
+        owner_id=request.current_user.id,
+        title=title,
+        grade_label=grade_label,
+        description=description,
+        sort_order=sort_order,
+    )
+    db.add(item)
+    db.flush()
+    _audit(db, request.current_user, "lecture_course.create", "lecture_course", item.id)
+    db.commit()
+    return jsonify({"course": _course_json(item, 0)}), 201
+
+
+@admin_api.patch("/admin/lecture-courses/<course_id>")
+@login_required
+@teacher_required
+@csrf_required
+def update_lecture_course(db, course_id):
+    item = _course_for_user(db, course_id)
+    if not item:
+        return _json_error("lecture course not found", 404)
+    body = request.get_json(silent=True) or {}
+    try:
+        if "title" in body:
+            item.title = _short_text(body.get("title"), 160, "course title", required=True)
+        if "grade_label" in body:
+            item.grade_label = _short_text(body.get("grade_label"), 80, "grade label")
+        if "description" in body:
+            item.description = _short_text(body.get("description"), 4000, "description")
+        if "sort_order" in body:
+            item.sort_order = int(body["sort_order"])
+        if "status" in body:
+            status = _short_text(body.get("status"), 24, "course status")
+            if status not in {"active", "archived"}:
+                raise ValueError("invalid course status")
+            item.status = status
+    except (TypeError, ValueError) as exc:
+        return _json_error(str(exc), 400)
+    _audit(db, request.current_user, "lecture_course.update", "lecture_course", item.id)
+    db.commit()
+    return jsonify({"course": _course_json(item)})
+
+
+@admin_api.get("/admin/lectures")
+@login_required
+@teacher_required
+def lectures_list(db):
+    course_id = str(request.args.get("course_id", "")).strip()
+    query = select(Lecture)
+    if request.current_user.role != "admin":
+        query = query.where(Lecture.owner_id == request.current_user.id)
+    if course_id:
+        if not _course_for_user(db, course_id):
+            return _json_error("lecture course not found", 404)
+        query = query.where(Lecture.course_id == course_id)
+    rows = db.scalars(query.order_by(Lecture.sort_order, Lecture.created_at)).all()
+    return jsonify({"items": [_lecture_json(row, include_payload=False) for row in rows]})
+
+
+@admin_api.post("/admin/lectures")
+@login_required
+@teacher_required
+@csrf_required
+def create_lecture(db):
+    body = request.get_json(silent=True) or {}
+    course = _course_for_user(db, str(body.get("course_id", "")))
+    if not course or course.status != "active":
+        return _json_error("active lecture course not found", 404)
+    try:
+        title = _short_text(body.get("title"), 180, "lecture title", required=True)
+        summary = _short_text(body.get("summary"), 4000, "summary")
+        sort_order = int(body.get("sort_order", 0))
+        requested_slug = _short_text(body.get("slug"), 100, "slug").lower()
+    except (TypeError, ValueError) as exc:
+        return _json_error(str(exc), 400)
+    slug = requested_slug or f"lecture-{secrets.token_hex(5)}"
+    if not LECTURE_SLUG_PATTERN.fullmatch(slug):
+        return _json_error("slug must contain lowercase letters, numbers, and hyphens", 400)
+    if db.scalar(select(Lecture).where(Lecture.slug == slug)):
+        return _json_error("lecture slug already exists", 409)
+    payload, error = _valid_lecture_payload(
+        body.get(
+            "payload",
+            {
+                "sections": [
+                    {
+                        "id": new_id("sec"),
+                        "title": "第一部分",
+                        "sort_order": 0,
+                        "blocks": [],
+                    }
+                ]
+            },
+        )
+    )
+    if error:
+        return _json_error(error, 400)
+    item = Lecture(
+        course_id=course.id,
+        owner_id=course.owner_id,
+        title=title,
+        slug=slug,
+        summary=summary,
+        sort_order=sort_order,
+        payload=payload,
+        created_by=request.current_user.id,
+        updated_by=request.current_user.id,
+    )
+    db.add(item)
+    db.flush()
+    _add_lecture_version(db, item, request.current_user.id, "创建讲义")
+    _audit(db, request.current_user, "lecture.create", "lecture", item.id)
+    db.commit()
+    return jsonify({"lecture": _lecture_json(item, course)}), 201
+
+
+@admin_api.get("/admin/lectures/<lecture_id>")
+@login_required
+@teacher_required
+def lecture_detail(db, lecture_id):
+    item = _lecture_for_user(db, lecture_id)
+    if not item:
+        return _json_error("lecture not found", 404)
+    return jsonify({"lecture": _lecture_json(item, db.get(LectureCourse, item.course_id))})
+
+
+@admin_api.put("/admin/lectures/<lecture_id>/draft")
+@login_required
+@teacher_required
+@csrf_required
+def save_lecture_draft(db, lecture_id):
+    item = _lecture_for_user(db, lecture_id)
+    if not item:
+        return _json_error("lecture not found", 404)
+    body = request.get_json(silent=True) or {}
+    try:
+        expected_version = int(body.get("version"))
+    except (TypeError, ValueError):
+        return _json_error("version is required", 400)
+    if expected_version != item.version:
+        return jsonify(
+            {
+                "error": "lecture version conflict",
+                "current_version": item.version,
+                "lecture": _lecture_json(item, db.get(LectureCourse, item.course_id)),
+            }
+        ), 409
+    payload, error = _valid_lecture_payload(body.get("payload"))
+    if error:
+        return _json_error(error, 400)
+    try:
+        title = _short_text(body.get("title"), 180, "lecture title", required=True)
+        summary = _short_text(body.get("summary"), 4000, "summary")
+        sort_order = int(body.get("sort_order", item.sort_order))
+    except (TypeError, ValueError) as exc:
+        return _json_error(str(exc), 400)
+    if item.status == "pending_review":
+        return _json_error("pending lecture must be published or returned before editing", 409)
+    item.title = title
+    item.summary = summary
+    item.sort_order = sort_order
+    item.payload = payload
+    item.version += 1
+    item.status = "draft"
+    item.updated_by = request.current_user.id
+    _add_lecture_version(db, item, request.current_user.id, "保存讲义草稿")
+    _audit(
+        db,
+        request.current_user,
+        "lecture.save",
+        "lecture",
+        item.id,
+        {"version": item.version},
+    )
+    db.commit()
+    return jsonify({"lecture": _lecture_json(item, db.get(LectureCourse, item.course_id))})
+
+
+@admin_api.post("/admin/lectures/<lecture_id>/submit")
+@login_required
+@teacher_required
+@csrf_required
+def submit_lecture(db, lecture_id):
+    item = _lecture_for_user(db, lecture_id)
+    if not item:
+        return _json_error("lecture not found", 404)
+    if item.status != "draft":
+        return _json_error("only draft lectures can be submitted", 409)
+    item.status = "pending_review"
+    item.updated_by = request.current_user.id
+    _audit(db, request.current_user, "lecture.submit", "lecture", item.id)
+    db.commit()
+    return jsonify({"lecture": _lecture_json(item, db.get(LectureCourse, item.course_id))})
+
+
+@admin_api.post("/admin/lectures/<lecture_id>/publish")
+@login_required
+@teacher_required
+@csrf_required
+def publish_lecture(db, lecture_id):
+    item = _lecture_for_user(db, lecture_id)
+    if not item:
+        return _json_error("lecture not found", 404)
+    if item.status not in {"draft", "pending_review", "published"}:
+        return _json_error("lecture cannot be published from its current status", 409)
+    course = db.get(LectureCourse, item.course_id)
+    if not course or course.status != "active":
+        return _json_error("lecture course is archived", 409)
+    now = utcnow()
+    snapshot = db.get(PublishedLecture, item.id)
+    if not snapshot:
+        snapshot = PublishedLecture(lecture_id=item.id, course_id=course.id)
+        db.add(snapshot)
+    snapshot.course_id = course.id
+    snapshot.course_title = course.title
+    snapshot.course_grade_label = course.grade_label
+    snapshot.title = item.title
+    snapshot.slug = item.slug
+    snapshot.summary = item.summary
+    snapshot.sort_order = item.sort_order
+    snapshot.version = item.version
+    snapshot.payload = item.payload
+    snapshot.published_by = request.current_user.id
+    snapshot.published_at = now
+    item.status = "published"
+    item.published_by = request.current_user.id
+    item.published_at = now
+    item.updated_by = request.current_user.id
+    _audit(
+        db,
+        request.current_user,
+        "lecture.publish",
+        "lecture",
+        item.id,
+        {"version": item.version},
+    )
+    db.commit()
+    return jsonify({"lecture": _lecture_json(item, course)})
+
+
+@admin_api.post("/admin/lectures/<lecture_id>/unpublish")
+@login_required
+@teacher_required
+@csrf_required
+def unpublish_lecture(db, lecture_id):
+    item = _lecture_for_user(db, lecture_id)
+    if not item:
+        return _json_error("lecture not found", 404)
+    snapshot = db.get(PublishedLecture, item.id)
+    if snapshot:
+        db.delete(snapshot)
+    item.status = "draft"
+    item.published_by = None
+    item.published_at = None
+    item.updated_by = request.current_user.id
+    _audit(db, request.current_user, "lecture.unpublish", "lecture", item.id)
+    db.commit()
+    return jsonify({"lecture": _lecture_json(item, db.get(LectureCourse, item.course_id))})
+
+
+@admin_api.get("/admin/lectures/<lecture_id>/versions")
+@login_required
+@teacher_required
+def lecture_versions(db, lecture_id):
+    item = _lecture_for_user(db, lecture_id)
+    if not item:
+        return _json_error("lecture not found", 404)
+    rows = db.scalars(
+        select(LectureVersion)
+        .where(LectureVersion.lecture_id == item.id)
+        .order_by(LectureVersion.version.desc())
+    ).all()
+    return jsonify(
+        {
+            "items": [
+                {
+                    "version": row.version,
+                    "change_reason": row.change_reason,
+                    "created_at": row.created_at.isoformat(),
+                }
+                for row in rows
+            ]
+        }
+    )
+
+
+@admin_api.post("/admin/lectures/<lecture_id>/rollback")
+@login_required
+@teacher_required
+@csrf_required
+def rollback_lecture(db, lecture_id):
+    item = _lecture_for_user(db, lecture_id)
+    if not item:
+        return _json_error("lecture not found", 404)
+    body = request.get_json(silent=True) or {}
+    try:
+        target_version = int(body.get("version"))
+    except (TypeError, ValueError):
+        return _json_error("version is required", 400)
+    historical = db.scalar(
+        select(LectureVersion).where(
+            LectureVersion.lecture_id == item.id,
+            LectureVersion.version == target_version,
+        )
+    )
+    if not historical:
+        return _json_error("lecture version not found", 404)
+    snapshot = historical.snapshot
+    item.title = snapshot["title"]
+    item.summary = snapshot.get("summary", "")
+    item.sort_order = int(snapshot.get("sort_order", item.sort_order))
+    item.payload = snapshot["payload"]
+    item.version += 1
+    item.status = "draft"
+    item.updated_by = request.current_user.id
+    _add_lecture_version(
+        db,
+        item,
+        request.current_user.id,
+        f"回滚到版本 {target_version}",
+    )
+    _audit(
+        db,
+        request.current_user,
+        "lecture.rollback",
+        "lecture",
+        item.id,
+        {"from_version": target_version, "new_version": item.version},
+    )
+    db.commit()
+    return jsonify({"lecture": _lecture_json(item, db.get(LectureCourse, item.course_id))})
+
+
+@admin_api.get("/public/lectures")
+def public_lectures():
+    db = SessionLocal()
+    try:
+        rows = db.scalars(
+            select(PublishedLecture).order_by(
+                PublishedLecture.course_title,
+                PublishedLecture.sort_order,
+                PublishedLecture.published_at,
+            )
+        ).all()
+        response = jsonify(
+            {"items": [_published_lecture_json(row, include_payload=False) for row in rows]}
+        )
+        version_sum = sum(row.version for row in rows)
+        response.set_etag(f"lectures-{len(rows)}-{version_sum}")
+        return response.make_conditional(request)
+    finally:
+        SessionLocal.remove()
+
+
+@admin_api.get("/public/lectures/<lecture_ref>")
+def public_lecture(lecture_ref):
+    db = SessionLocal()
+    try:
+        item = db.scalar(
+            select(PublishedLecture).where(
+                or_(
+                    PublishedLecture.lecture_id == lecture_ref,
+                    PublishedLecture.slug == lecture_ref,
+                )
+            )
+        )
+        if not item:
+            return _json_error("published lecture not found", 404)
+        response = jsonify({"lecture": _published_lecture_json(item)})
+        response.set_etag(f"lecture-{item.lecture_id}-v{item.version}")
+        return response.make_conditional(request)
+    finally:
+        SessionLocal.remove()
 
 
 @admin_api.post("/admin/reviews/<review_id>/approve")

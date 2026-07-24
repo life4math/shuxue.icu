@@ -1,0 +1,168 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>在线备课工作台 · shuxue.icu</title>
+  <link rel="stylesheet" href="vendor/katex.min.css">
+  <link rel="stylesheet" href="css/style.css?v=20260724-prep-1">
+  <link rel="stylesheet" href="css/lecture.css?v=20260724-prep-1">
+  <link rel="stylesheet" href="css/prep.css?v=20260724-prep-1">
+  <script src="vendor/katex.min.js"></script>
+</head>
+<body class="prep-body">
+  <header class="prep-header">
+    <div class="prep-header-brand">
+      <a class="lecture-brand" href="admin.html">shuxue<span>.icu</span></a>
+      <span>在线备课工作台</span>
+    </div>
+    <div class="prep-header-actions">
+      <span id="prep-user" class="prep-user"></span>
+      <a class="btn-ghost" href="admin.html">教师后台</a>
+      <a class="btn-ghost" href="https://shuxue.icu/lectures.html">公开讲义</a>
+    </div>
+  </header>
+
+  <main>
+    <section id="prep-auth-required" class="prep-empty-state" hidden>
+      <p class="lecture-eyebrow">AUTHENTICATION REQUIRED</p>
+      <h1>请先登录教师后台</h1>
+      <p>备课草稿、版本记录和发布操作只对已授权教师开放。</p>
+      <a class="btn-accent" href="admin.html">前往登录</a>
+    </section>
+
+    <section id="prep-workspace" class="prep-workspace" hidden>
+      <aside class="prep-library">
+        <div class="prep-panel-heading">
+          <div>
+            <span class="prep-kicker">COURSES</span>
+            <h2>课程与课次</h2>
+          </div>
+          <button id="course-new" class="btn-ghost" type="button">新建课程</button>
+        </div>
+        <div id="course-list" class="prep-list"></div>
+        <form id="course-form" class="prep-compact-form" hidden>
+          <label>课程名称<input id="course-title" maxlength="160" required></label>
+          <label>年级或学期<input id="course-grade" maxlength="80"></label>
+          <label>课程说明<textarea id="course-description" rows="3" maxlength="4000"></textarea></label>
+          <div class="prep-button-row">
+            <button class="btn-accent" type="submit">保存课程</button>
+            <button id="course-archive" class="btn-ghost" type="button">归档</button>
+          </div>
+        </form>
+
+        <div class="prep-panel-heading prep-subheading">
+          <div>
+            <span class="prep-kicker">LECTURES</span>
+            <h2>课次</h2>
+          </div>
+          <button id="lecture-new" class="btn-ghost" type="button" disabled>新建课次</button>
+        </div>
+        <div id="lecture-list" class="prep-list"></div>
+
+        <div class="prep-panel-heading prep-subheading">
+          <div>
+            <span class="prep-kicker">OUTLINE</span>
+            <h2>讲义大纲</h2>
+          </div>
+          <button id="section-new" class="btn-ghost" type="button" disabled>新增小节</button>
+        </div>
+        <div id="lecture-outline" class="prep-outline"></div>
+
+        <div class="prep-panel-heading prep-subheading">
+          <div>
+            <span class="prep-kicker">VERSIONS</span>
+            <h2>版本记录</h2>
+          </div>
+        </div>
+        <div id="lecture-versions" class="prep-versions"></div>
+      </aside>
+
+      <section class="prep-editor-pane">
+        <div class="prep-editor-toolbar">
+          <div>
+            <span id="lecture-status-badge" class="prep-status-badge">未选择课次</span>
+            <span id="autosave-status" class="prep-save-status" aria-live="polite"></span>
+          </div>
+          <div class="prep-button-row">
+            <button id="lecture-save" class="btn-ghost" type="button" disabled>保存草稿</button>
+            <button id="lecture-submit" class="btn-ghost" type="button" disabled>提交审核</button>
+            <button id="lecture-publish" class="btn-accent" type="button" disabled>发布</button>
+            <button id="lecture-unpublish" class="btn-ghost" type="button" disabled>撤下</button>
+          </div>
+        </div>
+
+        <div id="lecture-empty" class="prep-editor-empty">
+          <h1>选择或新建一个课次</h1>
+          <p>讲义由小节和内容块组成，保存的草稿不会覆盖已经发布的版本。</p>
+        </div>
+
+        <form id="lecture-form" class="prep-editor-form" hidden>
+          <label>讲义标题<input id="lecture-title-input" maxlength="180" required></label>
+          <label>导语<textarea id="lecture-summary-input" rows="3" maxlength="4000"></textarea></label>
+          <label>公开地址
+            <span id="lecture-slug" class="prep-readonly"></span>
+          </label>
+
+          <div class="prep-block-adder">
+            <label>添加内容块
+              <select id="block-type">
+                <option value="text">正文</option>
+                <option value="math">KaTeX 公式</option>
+                <option value="callout">要点提示</option>
+                <option value="example">例题</option>
+                <option value="question_ref">题目引用</option>
+                <option value="knowledge_ref">知识点引用</option>
+                <option value="image">图片</option>
+              </select>
+            </label>
+            <button id="block-add" class="btn-accent" type="button">添加到当前小节</button>
+          </div>
+
+          <div id="block-editor" class="prep-block-editor">
+            <p class="prep-muted">在左侧大纲中选择小节或内容块进行编辑。</p>
+          </div>
+        </form>
+      </section>
+
+      <aside class="prep-preview-pane">
+        <div class="prep-panel-heading">
+          <div>
+            <span class="prep-kicker">LIVE PREVIEW</span>
+            <h2>实时预览</h2>
+          </div>
+          <button id="lecture-rehearse" class="btn-ghost" type="button" disabled>排练模式</button>
+        </div>
+        <article class="prep-preview-paper">
+          <header class="prep-preview-header">
+            <p id="preview-course" class="lecture-eyebrow">COURSE</p>
+            <h1 id="preview-title">讲义预览</h1>
+            <p id="preview-summary"></p>
+          </header>
+          <div id="lecture-preview"></div>
+        </article>
+      </aside>
+    </section>
+  </main>
+
+  <section id="prep-stage" class="lecture-stage" hidden aria-label="讲义排练模式">
+    <header class="lecture-stage-header">
+      <strong id="prep-stage-title">讲义排练</strong>
+      <button id="prep-stage-close" class="btn-ghost" type="button">退出排练</button>
+    </header>
+    <div id="prep-stage-content" class="lecture-stage-content"></div>
+    <footer class="lecture-stage-footer">
+      <span id="prep-stage-progress" class="lecture-stage-progress"></span>
+      <div>
+        <button id="prep-stage-prev" class="btn-ghost" type="button">上一页</button>
+        <button id="prep-stage-reveal" class="btn-ghost" type="button">显示解答</button>
+        <button id="prep-stage-next" class="btn-accent" type="button">下一页</button>
+      </div>
+    </footer>
+  </section>
+
+  <script src="js/themes.js?v=20260724-prep-1"></script>
+  <script src="js/lecture-renderer.js?v=20260724-prep-1"></script>
+  <script src="js/prep.js?v=20260724-prep-1"></script>
+</body>
+</html>

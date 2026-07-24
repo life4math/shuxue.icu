@@ -1,0 +1,50 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>讲义 · shuxue.icu</title>
+  <link rel="stylesheet" href="vendor/katex.min.css">
+  <link rel="stylesheet" href="css/style.css?v=20260724-prep-1">
+  <link rel="stylesheet" href="css/lecture.css?v=20260724-prep-1">
+  <script src="vendor/katex.min.js"></script>
+</head>
+<body class="lecture-page">
+  <header class="lecture-site-header">
+    <a class="lecture-brand" href="index.html">shuxue<span>.icu</span></a>
+    <div class="lecture-header-links">
+      <a class="btn-ghost" href="lectures.html">全部讲义</a>
+      <button id="class-mode-button" class="btn-accent" type="button" disabled>课堂演示</button>
+    </div>
+  </header>
+  <main class="lecture-shell">
+    <section class="lecture-hero">
+      <p id="lecture-course" class="lecture-eyebrow">PUBLISHED LECTURE</p>
+      <h1 id="lecture-title">正在加载讲义…</h1>
+      <p id="lecture-summary" class="lecture-summary"></p>
+      <p id="lecture-meta" class="lecture-meta"></p>
+    </section>
+    <div id="lecture-document" class="lecture-document" aria-live="polite"></div>
+  </main>
+
+  <section id="lecture-stage" class="lecture-stage" hidden aria-label="课堂演示模式">
+    <header class="lecture-stage-header">
+      <strong id="stage-title">课堂演示</strong>
+      <button id="stage-close" class="btn-ghost" type="button">退出演示</button>
+    </header>
+    <div id="stage-content" class="lecture-stage-content"></div>
+    <footer class="lecture-stage-footer">
+      <span id="stage-progress" class="lecture-stage-progress"></span>
+      <div>
+        <button id="stage-prev" class="btn-ghost" type="button">上一页</button>
+        <button id="stage-reveal" class="btn-ghost" type="button">显示解答</button>
+        <button id="stage-next" class="btn-accent" type="button">下一页</button>
+      </div>
+    </footer>
+  </section>
+
+  <script src="js/themes.js?v=20260724-prep-1"></script>
+  <script src="js/lecture-renderer.js?v=20260724-prep-1"></script>
+  <script src="js/lecture.js?v=20260724-prep-1"></script>
+</body>
+</html>

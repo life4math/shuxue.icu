@@ -121,6 +121,16 @@
   align-items: center;
   justify-content: space-between;
 }
+.prep-entry-card {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 24px;
+  border-color: var(--accent-line);
+  background: var(--accent-dim);
+}
+.prep-entry-card .admin-muted { margin-bottom: 0; }
+.prep-entry-card .btn-accent { flex: 0 0 auto; text-decoration: none; }
 .knowledge-admin-layout { display:grid; grid-template-columns: minmax(220px,.7fr) minmax(0,1.5fr); gap:20px; }
 .knowledge-admin-list { max-height: 520px; overflow:auto; }
 .knowledge-admin-list .admin-row { cursor:pointer; }
@@ -177,4 +187,5 @@
   .admin-header { padding: 0 16px; }
   .admin-grid { grid-template-columns: 1fr; }
   .admin-card { padding: 20px; }
+  .prep-entry-card { align-items: flex-start; flex-direction: column; }
 }

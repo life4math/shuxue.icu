@@ -289,6 +289,80 @@ class PublishedKnowledge(Base):
     updated_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow, onupdate=utcnow)
 
 
+class LectureCourse(Base):
+    """教师备课使用的课程容器。"""
+
+    __tablename__ = "lecture_courses"
+
+    id: Mapped[str] = mapped_column(String(40), primary_key=True, default=lambda: new_id("lcrs"))
+    owner_id: Mapped[str] = mapped_column(ForeignKey("users.id"), index=True)
+    title: Mapped[str] = mapped_column(String(160))
+    grade_label: Mapped[str] = mapped_column(String(80), default="")
+    description: Mapped[str] = mapped_column(Text, default="")
+    status: Mapped[str] = mapped_column(String(24), default="active", index=True)
+    sort_order: Mapped[int] = mapped_column(Integer, default=0)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow, onupdate=utcnow)
+
+
+class Lecture(Base):
+    """讲义的当前可编辑版本；公开站点不直接读取本表。"""
+
+    __tablename__ = "lectures"
+
+    id: Mapped[str] = mapped_column(String(40), primary_key=True, default=lambda: new_id("lec"))
+    course_id: Mapped[str] = mapped_column(ForeignKey("lecture_courses.id"), index=True)
+    owner_id: Mapped[str] = mapped_column(ForeignKey("users.id"), index=True)
+    title: Mapped[str] = mapped_column(String(180))
+    slug: Mapped[str] = mapped_column(String(100), unique=True, index=True)
+    summary: Mapped[str] = mapped_column(Text, default="")
+    status: Mapped[str] = mapped_column(String(24), default="draft", index=True)
+    sort_order: Mapped[int] = mapped_column(Integer, default=0)
+    version: Mapped[int] = mapped_column(Integer, default=1)
+    payload: Mapped[dict] = mapped_column(JSON)
+    created_by: Mapped[str] = mapped_column(ForeignKey("users.id"))
+    updated_by: Mapped[str] = mapped_column(ForeignKey("users.id"))
+    published_by: Mapped[Optional[str]] = mapped_column(ForeignKey("users.id"), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow, onupdate=utcnow)
+    published_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+
+
+class LectureVersion(Base):
+    """每次保存或回滚产生的不可变讲义快照。"""
+
+    __tablename__ = "lecture_versions"
+    __table_args__ = (UniqueConstraint("lecture_id", "version", name="uq_lecture_version"),)
+
+    id: Mapped[str] = mapped_column(String(40), primary_key=True, default=lambda: new_id("lver"))
+    lecture_id: Mapped[str] = mapped_column(ForeignKey("lectures.id"), index=True)
+    version: Mapped[int] = mapped_column(Integer)
+    snapshot: Mapped[dict] = mapped_column(JSON)
+    change_reason: Mapped[str] = mapped_column(String(240), default="")
+    created_by: Mapped[str] = mapped_column(ForeignKey("users.id"))
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
+
+
+class PublishedLecture(Base):
+    """公开阅读和课堂演示读取的不可变讲义快照。"""
+
+    __tablename__ = "published_lectures"
+
+    lecture_id: Mapped[str] = mapped_column(String(40), primary_key=True)
+    course_id: Mapped[str] = mapped_column(String(40), index=True)
+    course_title: Mapped[str] = mapped_column(String(160))
+    course_grade_label: Mapped[str] = mapped_column(String(80), default="")
+    title: Mapped[str] = mapped_column(String(180))
+    slug: Mapped[str] = mapped_column(String(100), unique=True, index=True)
+    summary: Mapped[str] = mapped_column(Text, default="")
+    sort_order: Mapped[int] = mapped_column(Integer, default=0)
+    version: Mapped[int] = mapped_column(Integer)
+    payload: Mapped[dict] = mapped_column(JSON)
+    published_by: Mapped[str] = mapped_column(ForeignKey("users.id"))
+    published_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow, onupdate=utcnow)
+
+
 class AuditLog(Base):
     __tablename__ = "audit_logs"
 
