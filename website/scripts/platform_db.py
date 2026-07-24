@@ -131,6 +131,105 @@ class PublishedContent(Base):
     updated_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow, onupdate=utcnow)
 
 
+class Question(Base):
+    """正式题库中的当前可编辑版本；公开与备课读取发布快照。"""
+
+    __tablename__ = "questions"
+
+    id: Mapped[str] = mapped_column(String(40), primary_key=True, default=lambda: new_id("qst"))
+    code: Mapped[str] = mapped_column(String(80), unique=True, index=True)
+    owner_id: Mapped[str] = mapped_column(ForeignKey("users.id"), index=True)
+    module: Mapped[str] = mapped_column(String(20), default="FUNC", index=True)
+    question_type: Mapped[str] = mapped_column(String(20), default="solve", index=True)
+    difficulty: Mapped[int] = mapped_column(Integer, default=3, index=True)
+    stem: Mapped[str] = mapped_column(Text)
+    options_json: Mapped[list] = mapped_column("options", JSON, default=list)
+    answer: Mapped[str] = mapped_column(Text, default="")
+    analysis: Mapped[str] = mapped_column(Text, default="")
+    tags_json: Mapped[list] = mapped_column("tags", JSON, default=list)
+    source_json: Mapped[dict] = mapped_column("source", JSON, default=dict)
+    content_hash: Mapped[str] = mapped_column(String(64), index=True)
+    status: Mapped[str] = mapped_column(String(24), default="draft", index=True)
+    redirect_to_id: Mapped[Optional[str]] = mapped_column(
+        ForeignKey("questions.id"), nullable=True, index=True
+    )
+    version: Mapped[int] = mapped_column(Integer, default=1)
+    source_review_id: Mapped[Optional[str]] = mapped_column(
+        ForeignKey("review_items.id"), nullable=True, unique=True, index=True
+    )
+    created_by: Mapped[str] = mapped_column(ForeignKey("users.id"))
+    updated_by: Mapped[str] = mapped_column(ForeignKey("users.id"))
+    published_by: Mapped[Optional[str]] = mapped_column(ForeignKey("users.id"), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow, onupdate=utcnow)
+    published_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+
+
+class QuestionVersion(Base):
+    """题目每次创建、保存和回滚后的不可变版本快照。"""
+
+    __tablename__ = "question_versions"
+    __table_args__ = (UniqueConstraint("question_id", "version", name="uq_question_version"),)
+
+    id: Mapped[str] = mapped_column(String(40), primary_key=True, default=lambda: new_id("qver"))
+    question_id: Mapped[str] = mapped_column(ForeignKey("questions.id"), index=True)
+    version: Mapped[int] = mapped_column(Integer)
+    snapshot: Mapped[dict] = mapped_column(JSON)
+    change_reason: Mapped[str] = mapped_column(String(240), default="")
+    created_by: Mapped[str] = mapped_column(ForeignKey("users.id"))
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
+
+
+class QuestionKnowledgeLink(Base):
+    """正式题目与动态知识节点的关联。"""
+
+    __tablename__ = "question_knowledge_links"
+    __table_args__ = (
+        UniqueConstraint("question_id", "knowledge_node_id", name="uq_question_knowledge_link"),
+    )
+
+    id: Mapped[str] = mapped_column(String(40), primary_key=True, default=lambda: new_id("qkl"))
+    question_id: Mapped[str] = mapped_column(ForeignKey("questions.id"), index=True)
+    knowledge_node_id: Mapped[str] = mapped_column(ForeignKey("knowledge_nodes.id"), index=True)
+    relation_type: Mapped[str] = mapped_column(String(24), default="related")
+    sort_order: Mapped[int] = mapped_column(Integer, default=0)
+    created_by: Mapped[str] = mapped_column(ForeignKey("users.id"))
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
+
+
+class PublishedQuestion(Base):
+    """备课和公开 API 读取的题目发布快照。"""
+
+    __tablename__ = "published_questions"
+
+    question_id: Mapped[str] = mapped_column(String(40), primary_key=True)
+    code: Mapped[str] = mapped_column(String(80), unique=True, index=True)
+    module: Mapped[str] = mapped_column(String(20), index=True)
+    question_type: Mapped[str] = mapped_column(String(20), index=True)
+    difficulty: Mapped[int] = mapped_column(Integer, index=True)
+    stem: Mapped[str] = mapped_column(Text)
+    options_json: Mapped[list] = mapped_column("options", JSON, default=list)
+    answer: Mapped[str] = mapped_column(Text, default="")
+    analysis: Mapped[str] = mapped_column(Text, default="")
+    tags_json: Mapped[list] = mapped_column("tags", JSON, default=list)
+    source_json: Mapped[dict] = mapped_column("source", JSON, default=dict)
+    version: Mapped[int] = mapped_column(Integer)
+    published_by: Mapped[str] = mapped_column(ForeignKey("users.id"))
+    published_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow, onupdate=utcnow)
+
+
+class PublishedQuestionKnowledgeLink(Base):
+    """题目发布时冻结的知识节点关联。"""
+
+    __tablename__ = "published_question_knowledge_links"
+
+    question_id: Mapped[str] = mapped_column(String(40), primary_key=True)
+    knowledge_node_id: Mapped[str] = mapped_column(String(40), primary_key=True)
+    relation_type: Mapped[str] = mapped_column(String(24), default="related")
+    sort_order: Mapped[int] = mapped_column(Integer, default=0)
+
+
 class KnowledgeNode(Base):
     """知识图谱的可编辑节点；移动节点不会改变永久 ID 或业务代码。"""
 

@@ -46,6 +46,10 @@ server {
         try_files /prep.html =404;
         add_header Cache-Control "no-store" always;
     }
+    location = /questions.html {
+        try_files /questions.html =404;
+        add_header Cache-Control "no-store" always;
+    }
     location /css/ { expires 1h; }
     location /js/ { expires 1h; }
     location /vendor/ { expires 1h; }

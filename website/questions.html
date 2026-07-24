@@ -1,0 +1,152 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>正式题库 · shuxue.icu</title>
+  <link rel="stylesheet" href="vendor/katex.min.css">
+  <link rel="stylesheet" href="css/style.css?v=20260724-questions-1">
+  <link rel="stylesheet" href="css/lecture.css?v=20260724-questions-1">
+  <link rel="stylesheet" href="css/questions.css?v=20260724-questions-1">
+  <script src="vendor/katex.min.js"></script>
+</head>
+<body class="question-body">
+  <header class="question-header">
+    <div class="question-header-brand">
+      <a class="lecture-brand" href="admin.html">shuxue<span>.icu</span></a>
+      <span>正式题库</span>
+    </div>
+    <div class="question-header-actions">
+      <span id="question-user"></span>
+      <a class="btn-ghost" href="prep.html">在线备课</a>
+      <a class="btn-ghost" href="admin.html">教师后台</a>
+    </div>
+  </header>
+
+  <main>
+    <section id="question-auth-required" class="question-empty-state" hidden>
+      <p class="lecture-eyebrow">AUTHENTICATION REQUIRED</p>
+      <h1>请先登录教师后台</h1>
+      <p>正式题目的答案、解析、来源和版本记录只对授权教师开放。</p>
+      <a class="btn-accent" href="admin.html">前往登录</a>
+    </section>
+
+    <section id="question-workspace" class="question-workspace" hidden>
+      <aside class="question-library">
+        <div class="question-panel-heading">
+          <div>
+            <span class="question-kicker">QUESTION BANK</span>
+            <h2>题目清单</h2>
+          </div>
+          <button id="question-new" class="btn-accent" type="button">新建题目</button>
+        </div>
+        <form id="question-filter-form" class="question-filter-form">
+          <input id="question-filter-query" type="search" placeholder="搜索编号或题干">
+          <div class="question-filter-grid">
+            <select id="question-filter-module" aria-label="模块">
+              <option value="">全部模块</option>
+              <option value="FUNC">函数</option>
+              <option value="GEOM">几何</option>
+              <option value="ALGE">代数</option>
+              <option value="PROB">概率统计</option>
+              <option value="CALC">数列与微积分</option>
+            </select>
+            <select id="question-filter-status" aria-label="状态">
+              <option value="">全部状态</option>
+              <option value="draft">草稿</option>
+              <option value="pending_review">待审核</option>
+              <option value="published">已发布</option>
+              <option value="archived">已归档</option>
+              <option value="merged">已合并</option>
+            </select>
+          </div>
+          <button class="btn-ghost" type="submit">筛选</button>
+        </form>
+        <div id="question-list" class="question-list"></div>
+      </aside>
+
+      <section class="question-editor">
+        <div class="question-editor-toolbar">
+          <div>
+            <span id="question-status-badge" class="question-status-badge">新题目</span>
+            <span id="question-status" class="question-status" aria-live="polite"></span>
+          </div>
+          <div class="question-button-row">
+            <button id="question-submit" class="btn-ghost" type="button" disabled>提交审核</button>
+            <button id="question-publish" class="btn-accent" type="button" disabled>发布</button>
+            <button id="question-archive" class="btn-ghost" type="button" disabled>归档</button>
+          </div>
+        </div>
+
+        <form id="question-form" class="question-form">
+          <div class="question-field-grid">
+            <label>稳定编号<input id="question-code" maxlength="80" placeholder="留空自动生成"></label>
+            <label>模块
+              <select id="question-module">
+                <option value="FUNC">函数</option>
+                <option value="GEOM">几何</option>
+                <option value="ALGE">代数</option>
+                <option value="PROB">概率统计</option>
+                <option value="CALC">数列与微积分</option>
+              </select>
+            </label>
+            <label>题型
+              <select id="question-type">
+                <option value="choice">选择题</option>
+                <option value="fill">填空题</option>
+                <option value="solve">解答题</option>
+                <option value="proof">证明题</option>
+              </select>
+            </label>
+            <label>难度
+              <select id="question-difficulty">
+                <option value="1">1 · 基础</option>
+                <option value="2">2 · 容易</option>
+                <option value="3" selected>3 · 中等</option>
+                <option value="4">4 · 较难</option>
+                <option value="5">5 · 挑战</option>
+              </select>
+            </label>
+          </div>
+          <label>题干（支持行内 $KaTeX$）<textarea id="question-stem" rows="8" required></textarea></label>
+          <label>选项（JSON 数组）<textarea id="question-options" rows="5" spellcheck="false">[]</textarea></label>
+          <label>答案<textarea id="question-answer" rows="5" required></textarea></label>
+          <label>解析<textarea id="question-analysis" rows="8"></textarea></label>
+          <label>标签（逗号分隔）<input id="question-tags" placeholder="单调性, 导数, 压轴题"></label>
+          <label>知识点关联
+            <select id="question-knowledge" multiple size="9" aria-label="关联知识点"></select>
+          </label>
+          <label>来源与溯源信息（JSON）<textarea id="question-source" rows="6" spellcheck="false">{}</textarea></label>
+          <label>本次修改说明<input id="question-change-reason" maxlength="240" placeholder="例如：补充第二种解法"></label>
+          <button id="question-save" class="btn-accent" type="submit">保存草稿</button>
+        </form>
+
+        <section class="question-versions-panel">
+          <div class="question-panel-heading">
+            <div>
+              <span class="question-kicker">VERSIONS</span>
+              <h2>版本记录</h2>
+            </div>
+          </div>
+          <div id="question-versions" class="question-versions"></div>
+        </section>
+      </section>
+
+      <aside class="question-preview">
+        <div class="question-panel-heading">
+          <div>
+            <span class="question-kicker">LIVE PREVIEW</span>
+            <h2>题目预览</h2>
+          </div>
+        </div>
+        <div id="question-preview-content" class="question-preview-paper"></div>
+        <p class="question-preview-note">公开 API 不返回答案和解析；教师题库与备课工作台可查看完整内容。</p>
+      </aside>
+    </section>
+  </main>
+
+  <script src="js/themes.js?v=20260724-questions-1"></script>
+  <script src="js/lecture-renderer.js?v=20260724-questions-2"></script>
+  <script src="js/questions.js?v=20260724-questions-1"></script>
+</body>
+</html>

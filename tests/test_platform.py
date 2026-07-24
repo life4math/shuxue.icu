@@ -1,4 +1,5 @@
 import importlib
+import json
 import os
 import subprocess
 import sys
@@ -60,7 +61,7 @@ def test_alembic_baseline_creates_and_versions_schema(tmp_path):
     assert {"next_attempt_at", "heartbeat_at"} <= ai_job_columns
     with engine.connect() as connection:
         assert connection.execute(text("SELECT version_num FROM alembic_version")).scalar_one() == (
-            "0004_lesson_prep"
+            "0005_formal_question_bank"
         )
         assert connection.execute(text("SELECT COUNT(*) FROM knowledge_nodes")).scalar_one() == 71
         assert connection.execute(
@@ -80,6 +81,11 @@ def test_alembic_baseline_creates_and_versions_schema(tmp_path):
         "lectures",
         "lecture_versions",
         "published_lectures",
+        "questions",
+        "question_versions",
+        "question_knowledge_links",
+        "published_questions",
+        "published_question_knowledge_links",
     } <= tables
 
 
@@ -153,6 +159,92 @@ def test_dynamic_graph_migration_upgrades_legacy_content_tables(tmp_path):
                 "WHERE node_id = 'FUNC-01-01'"
             )
         ).scalar_one() == expected_id
+
+
+def test_formal_question_migration_backfills_legacy_published_content(tmp_path):
+    database_path = tmp_path / "question-backfill.db"
+    environment = os.environ.copy()
+    environment["SHUXUE_DATABASE_URL"] = f"sqlite:///{database_path}"
+    upgraded_to_prep = subprocess.run(
+        [
+            sys.executable,
+            "-m",
+            "alembic",
+            "-c",
+            os.path.join(ROOT, "alembic.ini"),
+            "upgrade",
+            "0004_lesson_prep",
+        ],
+        cwd=ROOT,
+        env=environment,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert upgraded_to_prep.returncode == 0, upgraded_to_prep.stderr
+
+    engine = create_engine(f"sqlite:///{database_path}")
+    with engine.begin() as connection:
+        connection.execute(
+            text(
+                "INSERT INTO users "
+                "(id, email, display_name, password_hash, role, is_active, created_at) "
+                "VALUES ('usr_legacy', 'legacy@example.com', '旧教师', 'hash', "
+                "'teacher', 1, '2026-07-24 00:00:00')"
+            )
+        )
+        connection.execute(
+            text(
+                "INSERT INTO published_content "
+                "(id, entity_type, status, payload, source_review_id, created_by, "
+                "created_at, updated_at) "
+                "VALUES ('pub_legacy_question', 'question', 'published', :payload, "
+                "NULL, 'usr_legacy', '2026-07-24 00:00:00', '2026-07-24 00:00:00')"
+            ),
+            {
+                "payload": json.dumps(
+                    {
+                        "id": "Q-LEGACY-001",
+                        "module": "FUNC",
+                        "type": "solve",
+                        "difficulty": 3,
+                        "stem": "迁移前已经发布的题目",
+                        "answer": "旧答案",
+                        "analysis": "旧解析",
+                        "knowledge_points": ["FUNC-01-01"],
+                    },
+                    ensure_ascii=False,
+                )
+            },
+        )
+
+    migrated = subprocess.run(
+        [sys.executable, os.path.join(SCRIPT_DIR, "migrate.py")],
+        cwd=ROOT,
+        env=environment,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert migrated.returncode == 0, migrated.stderr
+    with engine.connect() as connection:
+        row = connection.execute(
+            text(
+                "SELECT q.id, q.code, q.status, p.answer "
+                "FROM questions q JOIN published_questions p ON p.question_id = q.id "
+                "WHERE q.code = 'Q-LEGACY-001'"
+            )
+        ).one()
+        assert row.code == "Q-LEGACY-001"
+        assert row.status == "published"
+        assert row.answer == "旧答案"
+        assert connection.execute(
+            text(
+                "SELECT COUNT(*) FROM published_question_knowledge_links "
+                "WHERE question_id = :question_id"
+            ),
+            {"question_id": row.id},
+        ).scalar_one() == 1
 
 
 def test_public_demo_json_is_read_only(tmp_path):
@@ -508,24 +600,287 @@ def test_worker_recovers_interrupted_job(tmp_path, monkeypatch):
 def test_public_questions_hide_answer_and_analysis(tmp_path):
     app, db_module = build_app(tmp_path)
     email, password = create_user(db_module)
-    db = db_module.SessionLocal()
-    from sqlalchemy import select
-
-    user = db.scalar(select(db_module.User).where(db_module.User.email == email))
-    db.add(
-        db_module.PublishedContent(
-            entity_type="question",
-            payload={"stem": "1+1=?", "answer": "2", "analysis": "直接计算"},
-            created_by=user.id,
-        )
+    client = app.test_client()
+    csrf = login(client, email, password)
+    headers = {"X-CSRF-Token": csrf, "Content-Type": "application/json"}
+    created = client.post(
+        "/api/v1/admin/questions",
+        json={
+            "code": "Q-TEST-PUBLIC",
+            "module": "ALGE",
+            "question_type": "solve",
+            "difficulty": 1,
+            "stem": "1+1=?",
+            "answer": "2",
+            "analysis": "直接计算",
+            "source": {
+                "type": "teacher_manual",
+                "page_number": 3,
+                "upload_id": "upl_private",
+                "review_id": "rev_private",
+                "original_file": "教师内部资料.pdf",
+            },
+            "knowledge_node_ids": ["ALGE-01-01"],
+        },
+        headers=headers,
     )
-    db.commit()
-    db_module.SessionLocal.remove()
+    assert created.status_code == 201
+    question = created.get_json()["question"]
+    assert client.post(
+        f"/api/v1/admin/questions/{question['id']}/publish",
+        headers={"X-CSRF-Token": csrf},
+    ).status_code == 200
 
-    payload = app.test_client().get("/api/v1/public/questions").get_json()["items"][0]
+    payload = client.get("/api/v1/public/questions").get_json()["items"][0]
     assert payload["stem"] == "1+1=?"
     assert "answer" not in payload
     assert "analysis" not in payload
+    assert payload["source"] == {"type": "teacher_manual", "page_number": 3}
+
+
+def test_formal_question_crud_publish_deduplicate_and_version(tmp_path):
+    app, db_module = build_app(tmp_path)
+    email, password = create_user(db_module)
+    client = app.test_client()
+    csrf = login(client, email, password)
+    headers = {"X-CSRF-Token": csrf, "Content-Type": "application/json"}
+    payload = {
+        "code": "Q-FUNC-001",
+        "module": "FUNC",
+        "question_type": "choice",
+        "difficulty": 3,
+        "stem": "函数 $f(x)=x^2$ 的最小值是？",
+        "options": [
+            {"label": "A", "content": "$0$"},
+            {"label": "B", "content": "$1$"},
+        ],
+        "answer": "A",
+        "analysis": "配方或观察平方的非负性。",
+        "tags": ["函数", "最值"],
+        "source": {"type": "teacher_manual"},
+        "knowledge_node_ids": ["FUNC-01-02"],
+    }
+    created = client.post("/api/v1/admin/questions", json=payload, headers=headers)
+    assert created.status_code == 201
+    question = created.get_json()["question"]
+    assert question["status"] == "draft"
+    assert question["knowledge_node_ids"]
+
+    duplicate = client.post(
+        "/api/v1/admin/questions",
+        json={**payload, "code": "Q-FUNC-002"},
+        headers=headers,
+    )
+    assert duplicate.status_code == 409
+    assert duplicate.get_json()["duplicate_id"] == question["id"]
+    assert client.get("/api/v1/public/questions").get_json()["items"] == []
+
+    published = client.post(
+        f"/api/v1/admin/questions/{question['id']}/publish",
+        headers={"X-CSRF-Token": csrf},
+    )
+    assert published.status_code == 200
+    picker = client.get("/api/v1/admin/question-picker?query=Q-FUNC-001")
+    assert picker.status_code == 200
+    assert picker.get_json()["items"][0]["answer"] == "A"
+
+    updated = client.patch(
+        f"/api/v1/admin/questions/{question['id']}",
+        json={
+            "version": 1,
+            "answer": "A，最小值为 0",
+            "change_reason": "补充答案文字",
+        },
+        headers=headers,
+    )
+    assert updated.status_code == 200
+    assert updated.get_json()["question"]["version"] == 2
+    assert updated.get_json()["question"]["status"] == "draft"
+    assert client.get("/api/v1/admin/question-picker?query=Q-FUNC-001").get_json()[
+        "items"
+    ][0]["answer"] == "A"
+
+    assert client.post(
+        f"/api/v1/admin/questions/{question['id']}/publish",
+        headers={"X-CSRF-Token": csrf},
+    ).status_code == 200
+    assert client.get("/api/v1/admin/question-picker?query=Q-FUNC-001").get_json()[
+        "items"
+    ][0]["answer"] == "A，最小值为 0"
+    versions = client.get(
+        f"/api/v1/admin/questions/{question['id']}/versions"
+    ).get_json()["items"]
+    assert [item["version"] for item in versions] == [2, 1]
+
+
+def test_review_approval_writes_formal_question_and_deduplicates(tmp_path):
+    app, db_module = build_app(tmp_path)
+    email, password = create_user(db_module)
+    db = db_module.SessionLocal()
+    owner = db.scalar(select(db_module.User).where(db_module.User.email == email))
+    upload = db_module.UploadFile(
+        owner_id=owner.id,
+        original_name="source.pdf",
+        stored_name="source.pdf",
+        sha256="c" * 64,
+        content_type="application/pdf",
+        size=100,
+    )
+    db.add(upload)
+    db.flush()
+    job = db_module.AIJob(upload_id=upload.id, owner_id=owner.id, status="review")
+    db.add(job)
+    db.flush()
+    question_payload = {
+        "id": "Q-AI-001",
+        "module": "GEOM",
+        "type": "proof",
+        "difficulty": 4,
+        "stem": "证明两直线平行。",
+        "answer": "利用平行判定定理。",
+        "analysis": "先寻找同位角。",
+        "knowledge_points": ["GEOM-01-01"],
+        "source": {"page_number": 12},
+    }
+    first = db_module.ReviewItem(
+        job_id=job.id,
+        entity_type="question",
+        payload=question_payload,
+    )
+    second = db_module.ReviewItem(
+        job_id=job.id,
+        entity_type="question",
+        payload={**question_payload, "id": "Q-AI-002"},
+    )
+    db.add_all([first, second])
+    db.commit()
+    first_id = first.id
+    second_id = second.id
+    db_module.SessionLocal.remove()
+
+    client = app.test_client()
+    csrf = login(client, email, password)
+    first_result = client.post(
+        f"/api/v1/admin/reviews/{first_id}/approve",
+        headers={"X-CSRF-Token": csrf},
+    )
+    assert first_result.status_code == 200
+    assert first_result.get_json()["duplicate"] is False
+    question_id = first_result.get_json()["question_id"]
+
+    db = db_module.SessionLocal()
+    stored = db.get(db_module.Question, question_id)
+    assert stored.code == "Q-AI-001"
+    assert stored.status == "published"
+    assert stored.source_json["original_file"] == "source.pdf"
+    assert db.get(db_module.PublishedQuestion, question_id).answer == "利用平行判定定理。"
+    assert db.scalar(
+        select(db_module.PublishedContent).where(
+            db_module.PublishedContent.entity_type == "question"
+        )
+    ) is None
+    db_module.SessionLocal.remove()
+
+    duplicate_result = client.post(
+        f"/api/v1/admin/reviews/{second_id}/approve",
+        headers={"X-CSRF-Token": csrf},
+    )
+    assert duplicate_result.status_code == 200
+    assert duplicate_result.get_json() == {
+        "success": True,
+        "question_id": question_id,
+        "duplicate": True,
+    }
+
+
+def test_published_lecture_freezes_formal_question_snapshot(tmp_path):
+    app, db_module = build_app(tmp_path)
+    email, password = create_user(db_module)
+    client = app.test_client()
+    csrf = login(client, email, password)
+    headers = {"X-CSRF-Token": csrf, "Content-Type": "application/json"}
+    created_question = client.post(
+        "/api/v1/admin/questions",
+        json={
+            "code": "Q-FREEZE-001",
+            "module": "FUNC",
+            "question_type": "solve",
+            "difficulty": 2,
+            "stem": "第一版题干 $x+1=2$。",
+            "answer": "$x=1$",
+            "analysis": "移项。",
+            "knowledge_node_ids": ["FUNC-01-01"],
+        },
+        headers=headers,
+    ).get_json()["question"]
+    assert client.post(
+        f"/api/v1/admin/questions/{created_question['id']}/publish",
+        headers={"X-CSRF-Token": csrf},
+    ).status_code == 200
+
+    course = client.post(
+        "/api/v1/admin/lecture-courses",
+        json={"title": "快照测试课程"},
+        headers=headers,
+    ).get_json()["course"]
+    lecture = client.post(
+        "/api/v1/admin/lectures",
+        json={"course_id": course["id"], "title": "题目快照", "slug": "question-freeze"},
+        headers=headers,
+    ).get_json()["lecture"]
+    saved = client.put(
+        f"/api/v1/admin/lectures/{lecture['id']}/draft",
+        json={
+            "version": 1,
+            "title": "题目快照",
+            "summary": "",
+            "payload": {
+                "sections": [
+                    {
+                        "id": "sec_question",
+                        "title": "正式题目",
+                        "blocks": [
+                            {
+                                "id": "blk_question",
+                                "type": "question_ref",
+                                "question_id": created_question["id"],
+                                "title": "课堂练习",
+                                "stem": "错误的临时题干",
+                            }
+                        ],
+                    }
+                ]
+            },
+        },
+        headers=headers,
+    )
+    assert saved.status_code == 200
+    assert client.post(
+        f"/api/v1/admin/lectures/{lecture['id']}/publish",
+        headers={"X-CSRF-Token": csrf},
+    ).status_code == 200
+    public_before = client.get("/api/v1/public/lectures/question-freeze").get_json()[
+        "lecture"
+    ]["payload"]["sections"][0]["blocks"][0]
+    assert public_before["stem"] == "第一版题干 $x+1=2$。"
+    assert public_before["answer"] == "$x=1$"
+    assert public_before["code"] == "Q-FREEZE-001"
+
+    updated = client.patch(
+        f"/api/v1/admin/questions/{created_question['id']}",
+        json={"version": 1, "stem": "第二版题干。", "answer": "第二版答案。"},
+        headers=headers,
+    )
+    assert updated.status_code == 200
+    assert client.post(
+        f"/api/v1/admin/questions/{created_question['id']}/publish",
+        headers={"X-CSRF-Token": csrf},
+    ).status_code == 200
+    public_after = client.get("/api/v1/public/lectures/question-freeze").get_json()[
+        "lecture"
+    ]["payload"]["sections"][0]["blocks"][0]
+    assert public_after["stem"] == "第一版题干 $x+1=2$。"
+    assert public_after["answer"] == "$x=1$"
 
 
 def test_knowledge_document_draft_submit_publish_and_public_read(tmp_path):
@@ -1085,13 +1440,24 @@ def test_health_and_readiness(tmp_path):
     assert ready.get_json() == {"status": "ready", "database": "ok"}
 
 
-def test_admin_nginx_allows_lesson_prep_and_local_vendor_assets():
+def test_admin_nginx_allows_lesson_prep_question_bank_and_local_vendor_assets():
     config_path = os.path.join(ROOT, "deploy", "admin.shuxue.icu.conf.example")
     with open(config_path, encoding="utf-8") as handle:
         config = handle.read()
     assert "location = /prep.html" in config
     assert "try_files /prep.html =404;" in config
+    assert "location = /questions.html" in config
+    assert "try_files /questions.html =404;" in config
     assert "location /vendor/" in config
+
+    public_config_path = os.path.join(ROOT, "deploy", "shuxue.icu.conf")
+    with open(public_config_path, encoding="utf-8") as handle:
+        public_config = handle.read()
+    assert "location = /prep.html { return 301 https://admin.shuxue.icu/prep.html; }" in public_config
+    assert (
+        "location = /questions.html { return 301 https://admin.shuxue.icu/questions.html; }"
+        in public_config
+    )
 
 
 def bytes_io(content):

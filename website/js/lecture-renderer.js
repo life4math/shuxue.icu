@@ -11,7 +11,35 @@
   function appendMultiline(target, value) {
     const text = String(value || '');
     if (!text) return;
-    target.append(element('p', 'lecture-block-text', text));
+    const paragraph = element('p', 'lecture-block-text');
+    const parts = text.split(/(\$[^$\n]+\$)/g);
+    parts.forEach(part => {
+      if (part.startsWith('$') && part.endsWith('$') && part.length > 2) {
+        const host = element('span', 'lecture-math-inline');
+        const latex = part.slice(1, -1);
+        if (window.katex) {
+          try {
+            window.katex.render(latex, host, {
+              displayMode: false,
+              throwOnError: false,
+              strict: 'ignore',
+            });
+          } catch (_) {
+            host.textContent = part;
+          }
+        } else {
+          host.textContent = part;
+        }
+        paragraph.append(host);
+        return;
+      }
+      const lines = part.split('\n');
+      lines.forEach((line, index) => {
+        if (index) paragraph.append(document.createElement('br'));
+        paragraph.append(document.createTextNode(line));
+      });
+    });
+    target.append(paragraph);
   }
 
   function renderMath(target, latex, displayMode = true) {
@@ -71,8 +99,37 @@
       }
     } else if (type === 'question_ref') {
       card.append(element('span', 'lecture-block-label', item.title || '题目引用'));
-      if (item.question_id) card.append(element('code', 'lecture-ref-code', item.question_id));
+      if (item.code || item.question_id) {
+        card.append(element('code', 'lecture-ref-code', item.code || item.question_id));
+      }
       appendMultiline(card, item.stem || '题目将在正式题库接入后显示。');
+      if (Array.isArray(item.options) && item.options.length) {
+        const list = element('ol', 'lecture-question-options');
+        item.options.forEach((option, index) => {
+          const row = element('li');
+          const label = option && typeof option === 'object'
+            ? option.label || String.fromCharCode(65 + index)
+            : String.fromCharCode(65 + index);
+          const content = option && typeof option === 'object' ? option.content : option;
+          row.append(element('strong', '', `${label}.`));
+          appendMultiline(row, content);
+          list.append(row);
+        });
+        card.append(list);
+      }
+      if (item.answer || item.analysis) {
+        const answer = element('div', 'lecture-answer');
+        answer.hidden = options.revealAnswers === false;
+        if (item.answer) {
+          answer.append(element('strong', '', '答案'));
+          appendMultiline(answer, item.answer);
+        }
+        if (item.analysis) {
+          answer.append(element('strong', 'lecture-analysis-label', '解析'));
+          appendMultiline(answer, item.analysis);
+        }
+        card.append(answer);
+      }
     } else if (type === 'knowledge_ref') {
       card.append(element('span', 'lecture-block-label', '知识点'));
       const title = item.title || item.node_id || '未命名知识点';

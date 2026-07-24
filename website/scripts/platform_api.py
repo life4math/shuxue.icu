@@ -30,6 +30,11 @@ from platform_db import (
     PublishedKnowledgeRelation,
     PublishedLecture,
     PublishedContent,
+    PublishedQuestion,
+    PublishedQuestionKnowledgeLink,
+    Question,
+    QuestionKnowledgeLink,
+    QuestionVersion,
     ReviewItem,
     SessionLocal,
     UploadFile,
@@ -51,6 +56,9 @@ KNOWLEDGE_NODE_TYPES = {"domain", "module", "topic", "concept", "skill"}
 KNOWLEDGE_TYPES = {"memory", "concept", "procedure", "design"}
 KNOWLEDGE_RELATION_TYPES = {"prerequisite", "related", "often_confused", "extends"}
 KNOWLEDGE_CODE_PATTERN = re.compile(r"^[A-Z][A-Z0-9-]{1,79}$")
+QUESTION_CODE_PATTERN = re.compile(r"^[A-Z][A-Z0-9-]{1,79}$")
+QUESTION_MODULES = {"FUNC", "GEOM", "ALGE", "PROB", "CALC"}
+QUESTION_TYPES = {"choice", "fill", "solve", "proof"}
 LECTURE_SLUG_PATTERN = re.compile(r"^[a-z0-9][a-z0-9-]{2,99}$")
 LECTURE_BLOCK_TYPES = {
     "text",
@@ -1550,6 +1558,755 @@ def publish_knowledge(db, node_id):
     return jsonify({"knowledge": _knowledge_json(item)})
 
 
+def _question_content_hash(data):
+    canonical = {
+        "stem": " ".join(data["stem"].split()),
+        "options": data["options"],
+        "answer": " ".join(data["answer"].split()),
+    }
+    encoded = json.dumps(canonical, ensure_ascii=False, sort_keys=True).encode("utf-8")
+    return hashlib.sha256(encoded).hexdigest()
+
+
+def _valid_question_data(value):
+    if not isinstance(value, dict):
+        return None, "question payload must be an object"
+    try:
+        module = _short_text(value.get("module"), 20, "module").upper() or "FUNC"
+        if module not in QUESTION_MODULES:
+            raise ValueError("invalid question module")
+        question_type = (
+            _short_text(
+                value.get("question_type") or value.get("type"),
+                20,
+                "question type",
+            )
+            or "solve"
+        )
+        if question_type not in QUESTION_TYPES:
+            raise ValueError("invalid question type")
+        difficulty = int(value.get("difficulty", 3))
+        if difficulty < 1 or difficulty > 5:
+            raise ValueError("difficulty must be between 1 and 5")
+        stem = _short_text(value.get("stem"), 40000, "stem", required=True)
+        answer = _short_text(value.get("answer"), 40000, "answer", required=True)
+        analysis = _short_text(value.get("analysis"), 60000, "analysis")
+
+        raw_options = value.get("options", [])
+        if raw_options is None:
+            raw_options = []
+        if not isinstance(raw_options, list) or len(raw_options) > 8:
+            raise ValueError("options must be an array with at most 8 items")
+        options = []
+        for index, item in enumerate(raw_options):
+            if isinstance(item, dict):
+                label = _short_text(item.get("label"), 20, "option label") or chr(65 + index)
+                content = _short_text(
+                    item.get("content"), 6000, "option content", required=True
+                )
+            else:
+                label = chr(65 + index)
+                content = _short_text(item, 6000, "option content", required=True)
+            options.append({"label": label, "content": content})
+        if question_type == "choice" and len(options) < 2:
+            raise ValueError("choice questions require at least two options")
+
+        raw_tags = value.get("tags", [])
+        if raw_tags is None:
+            raw_tags = []
+        if not isinstance(raw_tags, list) or len(raw_tags) > 30:
+            raise ValueError("tags must be an array with at most 30 items")
+        tags = []
+        for item in raw_tags:
+            tag = _short_text(item, 100, "tag")
+            if tag and tag not in tags:
+                tags.append(tag)
+
+        source = value.get("source") or {}
+        if not isinstance(source, dict):
+            raise ValueError("source must be an object")
+        if len(json.dumps(source, ensure_ascii=False)) > 64 * 1024:
+            raise ValueError("source exceeds 64 KB")
+
+        raw_knowledge_refs = value.get("knowledge_node_ids")
+        if raw_knowledge_refs is None:
+            raw_knowledge_refs = value.get("knowledge_points", [])
+        if not isinstance(raw_knowledge_refs, list) or len(raw_knowledge_refs) > 40:
+            raise ValueError("knowledge_node_ids must be an array with at most 40 items")
+        knowledge_refs = []
+        for item in raw_knowledge_refs:
+            node_ref = _short_text(item, 80, "knowledge node id")
+            if node_ref and node_ref not in knowledge_refs:
+                knowledge_refs.append(node_ref)
+    except (TypeError, ValueError) as exc:
+        return None, str(exc)
+
+    return (
+        {
+            "module": module,
+            "question_type": question_type,
+            "difficulty": difficulty,
+            "stem": stem,
+            "options": options,
+            "answer": answer,
+            "analysis": analysis,
+            "tags": tags,
+            "source": source,
+            "knowledge_refs": knowledge_refs,
+        },
+        None,
+    )
+
+
+def _question_knowledge_nodes(db, refs):
+    nodes = []
+    for node_ref in refs:
+        node = _resolve_knowledge_node(db, node_ref)
+        if not node or node.status in {"archived", "merged"}:
+            return None, f"knowledge node not found: {node_ref}"
+        if node.id not in {item.id for item in nodes}:
+            nodes.append(node)
+    return nodes, None
+
+
+def _question_link_node_ids(db, question_id, published=False):
+    model = PublishedQuestionKnowledgeLink if published else QuestionKnowledgeLink
+    return list(
+        db.scalars(
+            select(model.knowledge_node_id)
+            .where(model.question_id == question_id)
+            .order_by(model.sort_order, model.knowledge_node_id)
+        ).all()
+    )
+
+
+def _question_snapshot(question, knowledge_node_ids):
+    return {
+        "code": question.code,
+        "module": question.module,
+        "question_type": question.question_type,
+        "difficulty": question.difficulty,
+        "stem": question.stem,
+        "options": question.options_json or [],
+        "answer": question.answer,
+        "analysis": question.analysis,
+        "tags": question.tags_json or [],
+        "source": question.source_json or {},
+        "knowledge_node_ids": list(knowledge_node_ids),
+    }
+
+
+def _question_json(db, question, include_content=True):
+    node_ids = _question_link_node_ids(db, question.id)
+    payload = {
+        "id": question.id,
+        "code": question.code,
+        "owner_id": question.owner_id,
+        "module": question.module,
+        "question_type": question.question_type,
+        "difficulty": question.difficulty,
+        "status": question.status,
+        "redirect_to_id": question.redirect_to_id,
+        "version": question.version,
+        "knowledge_node_ids": node_ids,
+        "source_review_id": question.source_review_id,
+        "created_at": question.created_at.isoformat(),
+        "updated_at": question.updated_at.isoformat(),
+        "published_at": question.published_at.isoformat() if question.published_at else None,
+    }
+    if include_content:
+        payload.update(
+            {
+                "stem": question.stem,
+                "options": question.options_json or [],
+                "answer": question.answer,
+                "analysis": question.analysis,
+                "tags": question.tags_json or [],
+                "source": question.source_json or {},
+            }
+        )
+    return payload
+
+
+def _published_question_json(db, question, include_answers=True):
+    node_ids = _question_link_node_ids(db, question.question_id, published=True)
+    nodes = []
+    if node_ids:
+        rows = db.scalars(
+            select(KnowledgeNode).where(KnowledgeNode.id.in_(node_ids))
+        ).all()
+        by_id = {row.id: row for row in rows}
+        nodes = [
+            {"id": node_id, "code": by_id[node_id].code, "title": by_id[node_id].title}
+            for node_id in node_ids
+            if node_id in by_id
+        ]
+    source = question.source_json or {}
+    public_source_keys = {"type", "year", "region", "page_number"}
+    visible_source = (
+        source
+        if include_answers
+        else {key: value for key, value in source.items() if key in public_source_keys}
+    )
+    payload = {
+        "id": question.question_id,
+        "code": question.code,
+        "module": question.module,
+        "question_type": question.question_type,
+        "type": question.question_type,
+        "difficulty": question.difficulty,
+        "stem": question.stem,
+        "options": question.options_json or [],
+        "tags": question.tags_json or [],
+        "source": visible_source,
+        "knowledge_node_ids": node_ids,
+        "knowledge_nodes": nodes,
+        "version": question.version,
+        "published_at": question.published_at.isoformat(),
+    }
+    if include_answers:
+        payload["answer"] = question.answer
+        payload["analysis"] = question.analysis
+    return payload
+
+
+def _resolve_question(db, question_ref, follow_redirect=True):
+    question = db.scalar(
+        select(Question).where(
+            or_(Question.id == question_ref, Question.code == str(question_ref).upper())
+        )
+    )
+    visited = set()
+    while question and follow_redirect and question.redirect_to_id:
+        if question.id in visited:
+            return None
+        visited.add(question.id)
+        question = db.get(Question, question.redirect_to_id)
+    return question
+
+
+def _question_for_user(db, question_ref, editable=False):
+    question = _resolve_question(db, question_ref, follow_redirect=not editable)
+    if not question:
+        return None
+    if request.current_user.role == "admin":
+        return question
+    if question.owner_id == request.current_user.id:
+        return question
+    if not editable and question.status == "published":
+        return question
+    return None
+
+
+def _next_question_code(db):
+    while True:
+        question_id = new_id("qst")
+        code = f"Q-{question_id[-10:].upper()}"
+        if not db.scalar(select(Question).where(Question.code == code)):
+            return question_id, code
+
+
+def _replace_question_links(db, question, nodes, actor_id):
+    db.execute(delete(QuestionKnowledgeLink).where(QuestionKnowledgeLink.question_id == question.id))
+    for index, node in enumerate(nodes):
+        db.add(
+            QuestionKnowledgeLink(
+                question_id=question.id,
+                knowledge_node_id=node.id,
+                relation_type="primary" if index == 0 else "related",
+                sort_order=index,
+                created_by=actor_id,
+            )
+        )
+
+
+def _add_question_version(db, question, actor_id, reason, node_ids=None):
+    if node_ids is None:
+        node_ids = _question_link_node_ids(db, question.id)
+    db.add(
+        QuestionVersion(
+            question_id=question.id,
+            version=question.version,
+            snapshot=_question_snapshot(question, node_ids),
+            change_reason=reason[:240],
+            created_by=actor_id,
+        )
+    )
+
+
+def _publish_question_snapshot(db, question, actor_id):
+    now = utcnow()
+    snapshot = db.get(PublishedQuestion, question.id)
+    if not snapshot:
+        snapshot = PublishedQuestion(question_id=question.id)
+        db.add(snapshot)
+    snapshot.code = question.code
+    snapshot.module = question.module
+    snapshot.question_type = question.question_type
+    snapshot.difficulty = question.difficulty
+    snapshot.stem = question.stem
+    snapshot.options_json = question.options_json or []
+    snapshot.answer = question.answer
+    snapshot.analysis = question.analysis
+    snapshot.tags_json = question.tags_json or []
+    snapshot.source_json = question.source_json or {}
+    snapshot.version = question.version
+    snapshot.published_by = actor_id
+    snapshot.published_at = now
+    db.execute(
+        delete(PublishedQuestionKnowledgeLink).where(
+            PublishedQuestionKnowledgeLink.question_id == question.id
+        )
+    )
+    # 会话关闭了 autoflush；AI 审核入库与首次发布可能在同一事务内，
+    # 先落当前知识关联，再生成对应的发布关联快照。
+    db.flush()
+    links = db.scalars(
+        select(QuestionKnowledgeLink)
+        .where(QuestionKnowledgeLink.question_id == question.id)
+        .order_by(QuestionKnowledgeLink.sort_order)
+    ).all()
+    for link in links:
+        db.add(
+            PublishedQuestionKnowledgeLink(
+                question_id=question.id,
+                knowledge_node_id=link.knowledge_node_id,
+                relation_type=link.relation_type,
+                sort_order=link.sort_order,
+            )
+        )
+    question.status = "published"
+    question.published_by = actor_id
+    question.published_at = now
+    question.updated_by = actor_id
+    return snapshot
+
+
+@admin_api.get("/admin/questions")
+@login_required
+@teacher_required
+def admin_questions(db):
+    query = select(Question)
+    if request.current_user.role != "admin":
+        query = query.where(
+            or_(
+                Question.owner_id == request.current_user.id,
+                Question.status == "published",
+            )
+        )
+    status = str(request.args.get("status", "")).strip()
+    module = str(request.args.get("module", "")).strip().upper()
+    question_type = str(request.args.get("question_type", "")).strip()
+    knowledge_ref = str(request.args.get("knowledge_node_id", "")).strip()
+    search = str(request.args.get("query", "")).strip()
+    try:
+        difficulty = int(request.args["difficulty"]) if request.args.get("difficulty") else None
+        limit = min(200, max(1, int(request.args.get("limit", 100))))
+    except ValueError:
+        return _json_error("invalid numeric filter", 400)
+    if status:
+        query = query.where(Question.status == status)
+    if module:
+        query = query.where(Question.module == module)
+    if question_type:
+        query = query.where(Question.question_type == question_type)
+    if difficulty:
+        query = query.where(Question.difficulty == difficulty)
+    if knowledge_ref:
+        node = _resolve_knowledge_node(db, knowledge_ref)
+        if not node:
+            return _json_error("knowledge node not found", 404)
+        query = query.join(
+            QuestionKnowledgeLink,
+            QuestionKnowledgeLink.question_id == Question.id,
+        ).where(QuestionKnowledgeLink.knowledge_node_id == node.id)
+    if search:
+        pattern = f"%{search}%"
+        query = query.where(or_(Question.code.ilike(pattern), Question.stem.ilike(pattern)))
+    rows = db.scalars(query.order_by(Question.updated_at.desc()).limit(limit)).all()
+    return jsonify({"items": [_question_json(db, row) for row in rows]})
+
+
+@admin_api.post("/admin/questions")
+@login_required
+@teacher_required
+@csrf_required
+def create_question(db):
+    body = request.get_json(silent=True) or {}
+    data, error = _valid_question_data(body)
+    if error:
+        return _json_error(error, 400)
+    nodes, error = _question_knowledge_nodes(db, data["knowledge_refs"])
+    if error:
+        return _json_error(error, 400)
+    content_hash = _question_content_hash(data)
+    duplicate = db.scalar(
+        select(Question).where(
+            Question.content_hash == content_hash,
+            Question.status.notin_({"archived", "merged"}),
+        )
+    )
+    if duplicate:
+        return jsonify({"error": "duplicate question", "duplicate_id": duplicate.id}), 409
+
+    question_id, generated_code = _next_question_code(db)
+    requested_code = str(body.get("code", "")).strip().upper()
+    code = requested_code or generated_code
+    if not QUESTION_CODE_PATTERN.fullmatch(code):
+        return _json_error("invalid question code", 400)
+    if db.scalar(select(Question).where(Question.code == code)):
+        return _json_error("question code already exists", 409)
+    question = Question(
+        id=question_id,
+        code=code,
+        owner_id=request.current_user.id,
+        module=data["module"],
+        question_type=data["question_type"],
+        difficulty=data["difficulty"],
+        stem=data["stem"],
+        options_json=data["options"],
+        answer=data["answer"],
+        analysis=data["analysis"],
+        tags_json=data["tags"],
+        source_json=data["source"],
+        content_hash=content_hash,
+        status="draft",
+        version=1,
+        created_by=request.current_user.id,
+        updated_by=request.current_user.id,
+    )
+    db.add(question)
+    db.flush()
+    _replace_question_links(db, question, nodes, request.current_user.id)
+    _add_question_version(
+        db,
+        question,
+        request.current_user.id,
+        "创建题目",
+        [node.id for node in nodes],
+    )
+    _audit(db, request.current_user, "question.create", "question", question.id)
+    db.commit()
+    return jsonify({"question": _question_json(db, question)}), 201
+
+
+@admin_api.get("/admin/questions/<question_ref>")
+@login_required
+@teacher_required
+def question_detail(db, question_ref):
+    question = _question_for_user(db, question_ref)
+    if not question:
+        return _json_error("question not found", 404)
+    return jsonify({"question": _question_json(db, question)})
+
+
+@admin_api.patch("/admin/questions/<question_ref>")
+@login_required
+@teacher_required
+@csrf_required
+def update_question(db, question_ref):
+    question = _question_for_user(db, question_ref, editable=True)
+    if not question:
+        return _json_error("question not found", 404)
+    if question.status in {"archived", "merged"}:
+        return _json_error("archived or merged questions cannot be edited", 409)
+    if question.status == "pending_review":
+        return _json_error("pending questions must be published or returned before editing", 409)
+    body = request.get_json(silent=True) or {}
+    if not isinstance(body.get("version"), int):
+        return _json_error("version is required", 400)
+    if body["version"] != question.version:
+        return jsonify({"error": "version conflict", "current_version": question.version}), 409
+    current_node_ids = _question_link_node_ids(db, question.id)
+    merged = {
+        "module": body.get("module", question.module),
+        "question_type": body.get("question_type", question.question_type),
+        "difficulty": body.get("difficulty", question.difficulty),
+        "stem": body.get("stem", question.stem),
+        "options": body.get("options", question.options_json or []),
+        "answer": body.get("answer", question.answer),
+        "analysis": body.get("analysis", question.analysis),
+        "tags": body.get("tags", question.tags_json or []),
+        "source": body.get("source", question.source_json or {}),
+        "knowledge_node_ids": body.get("knowledge_node_ids", current_node_ids),
+    }
+    data, error = _valid_question_data(merged)
+    if error:
+        return _json_error(error, 400)
+    nodes, error = _question_knowledge_nodes(db, data["knowledge_refs"])
+    if error:
+        return _json_error(error, 400)
+    content_hash = _question_content_hash(data)
+    duplicate = db.scalar(
+        select(Question).where(
+            Question.content_hash == content_hash,
+            Question.id != question.id,
+            Question.status.notin_({"archived", "merged"}),
+        )
+    )
+    if duplicate:
+        return jsonify({"error": "duplicate question", "duplicate_id": duplicate.id}), 409
+
+    question.module = data["module"]
+    question.question_type = data["question_type"]
+    question.difficulty = data["difficulty"]
+    question.stem = data["stem"]
+    question.options_json = data["options"]
+    question.answer = data["answer"]
+    question.analysis = data["analysis"]
+    question.tags_json = data["tags"]
+    question.source_json = data["source"]
+    question.content_hash = content_hash
+    question.version += 1
+    question.status = "draft"
+    question.updated_by = request.current_user.id
+    _replace_question_links(db, question, nodes, request.current_user.id)
+    _add_question_version(
+        db,
+        question,
+        request.current_user.id,
+        str(body.get("change_reason", "保存题目草稿")).strip() or "保存题目草稿",
+        [node.id for node in nodes],
+    )
+    _audit(
+        db,
+        request.current_user,
+        "question.update",
+        "question",
+        question.id,
+        {"version": question.version},
+    )
+    db.commit()
+    return jsonify({"question": _question_json(db, question)})
+
+
+@admin_api.post("/admin/questions/<question_ref>/submit")
+@login_required
+@teacher_required
+@csrf_required
+def submit_question(db, question_ref):
+    question = _question_for_user(db, question_ref, editable=True)
+    if not question:
+        return _json_error("question not found", 404)
+    if question.status != "draft":
+        return _json_error("only draft questions can be submitted", 409)
+    question.status = "pending_review"
+    question.updated_by = request.current_user.id
+    _audit(db, request.current_user, "question.submit", "question", question.id)
+    db.commit()
+    return jsonify({"question": _question_json(db, question)})
+
+
+@admin_api.post("/admin/questions/<question_ref>/publish")
+@login_required
+@teacher_required
+@csrf_required
+def publish_question(db, question_ref):
+    question = _question_for_user(db, question_ref, editable=True)
+    if not question:
+        return _json_error("question not found", 404)
+    if question.status not in {"draft", "pending_review", "published"}:
+        return _json_error("question cannot be published from its current status", 409)
+    _publish_question_snapshot(db, question, request.current_user.id)
+    _audit(
+        db,
+        request.current_user,
+        "question.publish",
+        "question",
+        question.id,
+        {"version": question.version},
+    )
+    db.commit()
+    return jsonify({"question": _question_json(db, question)})
+
+
+@admin_api.post("/admin/questions/<question_ref>/archive")
+@login_required
+@teacher_required
+@csrf_required
+def archive_question(db, question_ref):
+    question = _question_for_user(db, question_ref, editable=True)
+    if not question:
+        return _json_error("question not found", 404)
+    if question.status == "merged":
+        return _json_error("merged question cannot be archived", 409)
+    db.execute(
+        delete(PublishedQuestionKnowledgeLink).where(
+            PublishedQuestionKnowledgeLink.question_id == question.id
+        )
+    )
+    snapshot = db.get(PublishedQuestion, question.id)
+    if snapshot:
+        db.delete(snapshot)
+    question.status = "archived"
+    question.updated_by = request.current_user.id
+    _audit(db, request.current_user, "question.archive", "question", question.id)
+    db.commit()
+    return jsonify({"question": _question_json(db, question)})
+
+
+@admin_api.post("/admin/questions/<question_ref>/merge")
+@login_required
+@admin_required
+@csrf_required
+def merge_question(db, question_ref):
+    source = _resolve_question(db, question_ref, follow_redirect=False)
+    body = request.get_json(silent=True) or {}
+    target = _resolve_question(db, str(body.get("target_id", "")))
+    if not source or not target:
+        return _json_error("question not found", 404)
+    if source.id == target.id:
+        return _json_error("question cannot be merged into itself", 409)
+    if source.status == "merged" or target.status in {"archived", "merged"}:
+        return _json_error("invalid question merge target", 409)
+    db.execute(
+        delete(PublishedQuestionKnowledgeLink).where(
+            PublishedQuestionKnowledgeLink.question_id == source.id
+        )
+    )
+    source_snapshot = db.get(PublishedQuestion, source.id)
+    if source_snapshot:
+        db.delete(source_snapshot)
+    source.status = "merged"
+    source.redirect_to_id = target.id
+    source.updated_by = request.current_user.id
+    _audit(
+        db,
+        request.current_user,
+        "question.merge",
+        "question",
+        source.id,
+        {"target_id": target.id},
+    )
+    db.commit()
+    return jsonify({"question": _question_json(db, source)})
+
+
+@admin_api.get("/admin/questions/<question_ref>/versions")
+@login_required
+@teacher_required
+def question_versions(db, question_ref):
+    question = _question_for_user(db, question_ref)
+    if not question:
+        return _json_error("question not found", 404)
+    rows = db.scalars(
+        select(QuestionVersion)
+        .where(QuestionVersion.question_id == question.id)
+        .order_by(QuestionVersion.version.desc())
+    ).all()
+    return jsonify(
+        {
+            "items": [
+                {
+                    "version": row.version,
+                    "change_reason": row.change_reason,
+                    "created_at": row.created_at.isoformat(),
+                }
+                for row in rows
+            ]
+        }
+    )
+
+
+@admin_api.post("/admin/questions/<question_ref>/rollback")
+@login_required
+@teacher_required
+@csrf_required
+def rollback_question(db, question_ref):
+    question = _question_for_user(db, question_ref, editable=True)
+    if not question:
+        return _json_error("question not found", 404)
+    body = request.get_json(silent=True) or {}
+    try:
+        target_version = int(body.get("version"))
+    except (TypeError, ValueError):
+        return _json_error("version is required", 400)
+    historical = db.scalar(
+        select(QuestionVersion).where(
+            QuestionVersion.question_id == question.id,
+            QuestionVersion.version == target_version,
+        )
+    )
+    if not historical:
+        return _json_error("question version not found", 404)
+    data, error = _valid_question_data(historical.snapshot)
+    if error:
+        return _json_error("stored question version is invalid", 500)
+    nodes, error = _question_knowledge_nodes(db, data["knowledge_refs"])
+    if error:
+        return _json_error(error, 409)
+    question.module = data["module"]
+    question.question_type = data["question_type"]
+    question.difficulty = data["difficulty"]
+    question.stem = data["stem"]
+    question.options_json = data["options"]
+    question.answer = data["answer"]
+    question.analysis = data["analysis"]
+    question.tags_json = data["tags"]
+    question.source_json = data["source"]
+    question.content_hash = _question_content_hash(data)
+    question.version += 1
+    question.status = "draft"
+    question.updated_by = request.current_user.id
+    _replace_question_links(db, question, nodes, request.current_user.id)
+    _add_question_version(
+        db,
+        question,
+        request.current_user.id,
+        f"回滚到版本 {target_version}",
+        [node.id for node in nodes],
+    )
+    _audit(
+        db,
+        request.current_user,
+        "question.rollback",
+        "question",
+        question.id,
+        {"from_version": target_version, "new_version": question.version},
+    )
+    db.commit()
+    return jsonify({"question": _question_json(db, question)})
+
+
+@admin_api.get("/admin/question-picker")
+@login_required
+@teacher_required
+def question_picker(db):
+    query = select(PublishedQuestion)
+    search = str(request.args.get("query", "")).strip()
+    module = str(request.args.get("module", "")).strip().upper()
+    question_type = str(request.args.get("question_type", "")).strip()
+    knowledge_ref = str(request.args.get("knowledge_node_id", "")).strip()
+    try:
+        difficulty = int(request.args["difficulty"]) if request.args.get("difficulty") else None
+        limit = min(100, max(1, int(request.args.get("limit", 30))))
+    except ValueError:
+        return _json_error("invalid numeric filter", 400)
+    if search:
+        pattern = f"%{search}%"
+        query = query.where(
+            or_(PublishedQuestion.code.ilike(pattern), PublishedQuestion.stem.ilike(pattern))
+        )
+    if module:
+        query = query.where(PublishedQuestion.module == module)
+    if question_type:
+        query = query.where(PublishedQuestion.question_type == question_type)
+    if difficulty:
+        query = query.where(PublishedQuestion.difficulty == difficulty)
+    if knowledge_ref:
+        node = _resolve_knowledge_node(db, knowledge_ref)
+        if not node:
+            return _json_error("knowledge node not found", 404)
+        query = query.join(
+            PublishedQuestionKnowledgeLink,
+            PublishedQuestionKnowledgeLink.question_id == PublishedQuestion.question_id,
+        ).where(PublishedQuestionKnowledgeLink.knowledge_node_id == node.id)
+    rows = db.scalars(
+        query.order_by(PublishedQuestion.published_at.desc()).limit(limit)
+    ).all()
+    return jsonify({"items": [_published_question_json(db, row) for row in rows]})
+
+
 def _course_for_user(db, course_id):
     course = db.get(LectureCourse, course_id)
     if not course:
@@ -1693,8 +2450,43 @@ def _valid_lecture_payload(value):
                     normalized["question_id"] = _short_text(
                         block.get("question_id"), 80, "question id"
                     )
+                    normalized["code"] = _short_text(block.get("code"), 80, "question code")
                     normalized["title"] = _short_text(block.get("title"), 200, "question title")
                     normalized["stem"] = _short_text(block.get("stem"), 12000, "question stem")
+                    raw_options = block.get("options", [])
+                    if not isinstance(raw_options, list) or len(raw_options) > 8:
+                        raise ValueError("question reference options must be an array")
+                    normalized_options = []
+                    for option_index, option in enumerate(raw_options):
+                        if isinstance(option, dict):
+                            label = (
+                                _short_text(option.get("label"), 20, "option label")
+                                or chr(65 + option_index)
+                            )
+                            content = _short_text(
+                                option.get("content"), 6000, "option content"
+                            )
+                        else:
+                            label = chr(65 + option_index)
+                            content = _short_text(option, 6000, "option content")
+                        if content:
+                            normalized_options.append({"label": label, "content": content})
+                    normalized["options"] = normalized_options
+                    normalized["answer"] = _short_text(
+                        block.get("answer"), 12000, "question answer"
+                    )
+                    normalized["analysis"] = _short_text(
+                        block.get("analysis"), 20000, "question analysis"
+                    )
+                    normalized["question_type"] = _short_text(
+                        block.get("question_type"), 20, "question type"
+                    )
+                    try:
+                        normalized["difficulty"] = min(
+                            5, max(1, int(block.get("difficulty", 3)))
+                        )
+                    except (TypeError, ValueError):
+                        normalized["difficulty"] = 3
                 elif block_type == "knowledge_ref":
                     normalized["node_id"] = _short_text(
                         block.get("node_id"), 80, "knowledge node id"
@@ -1727,6 +2519,42 @@ def _valid_lecture_payload(value):
     if len(json.dumps(normalized_payload, ensure_ascii=False)) > 1024 * 1024:
         return None, "lecture payload exceeds 1 MB"
     return normalized_payload, None
+
+
+def _freeze_lecture_question_refs(db, payload):
+    """发布讲义时用当前题库快照补齐题目块，之后题目编辑不影响历史讲义。"""
+    frozen = json.loads(json.dumps(payload, ensure_ascii=False))
+    for section in frozen.get("sections", []):
+        for block in section.get("blocks", []):
+            if block.get("type") != "question_ref":
+                continue
+            question_ref = str(block.get("question_id") or block.get("code") or "").strip()
+            if not question_ref:
+                continue
+            snapshot = db.scalar(
+                select(PublishedQuestion).where(
+                    or_(
+                        PublishedQuestion.question_id == question_ref,
+                        PublishedQuestion.code == question_ref.upper(),
+                    )
+                )
+            )
+            if not snapshot:
+                return None, f"published question not found: {question_ref}"
+            block.update(
+                {
+                    "question_id": snapshot.question_id,
+                    "code": snapshot.code,
+                    "title": block.get("title") or snapshot.code,
+                    "stem": snapshot.stem,
+                    "options": snapshot.options_json or [],
+                    "answer": snapshot.answer,
+                    "analysis": snapshot.analysis,
+                    "question_type": snapshot.question_type,
+                    "difficulty": snapshot.difficulty,
+                }
+            )
+    return frozen, None
 
 
 def _lecture_version_snapshot(lecture):
@@ -1993,6 +2821,9 @@ def publish_lecture(db, lecture_id):
     course = db.get(LectureCourse, item.course_id)
     if not course or course.status != "active":
         return _json_error("lecture course is archived", 409)
+    frozen_payload, freeze_error = _freeze_lecture_question_refs(db, item.payload)
+    if freeze_error:
+        return _json_error(freeze_error, 409)
     now = utcnow()
     snapshot = db.get(PublishedLecture, item.id)
     if not snapshot:
@@ -2006,7 +2837,7 @@ def publish_lecture(db, lecture_id):
     snapshot.summary = item.summary
     snapshot.sort_order = item.sort_order
     snapshot.version = item.version
-    snapshot.payload = item.payload
+    snapshot.payload = frozen_payload
     snapshot.published_by = request.current_user.id
     snapshot.published_at = now
     item.status = "published"
@@ -2170,6 +3001,101 @@ def approve_review(db, review_id):
     if item.status != "pending_review":
         return _json_error("review item is not pending", 409)
 
+    if item.entity_type == "question":
+        data, error = _valid_question_data(item.payload)
+        if error:
+            return _json_error(f"invalid question payload: {error}", 400)
+        nodes, error = _question_knowledge_nodes(db, data["knowledge_refs"])
+        if error:
+            return _json_error(error, 400)
+        content_hash = _question_content_hash(data)
+        duplicate = db.scalar(
+            select(Question).where(
+                Question.content_hash == content_hash,
+                Question.status.notin_({"archived", "merged"}),
+            )
+        )
+        item.status = "approved"
+        item.reviewed_by = request.current_user.id
+        item.reviewed_at = utcnow()
+        if duplicate:
+            _audit(
+                db,
+                request.current_user,
+                "review.approve_duplicate",
+                "review_item",
+                item.id,
+                {"question_id": duplicate.id},
+            )
+            db.commit()
+            return jsonify(
+                {
+                    "success": True,
+                    "question_id": duplicate.id,
+                    "duplicate": True,
+                }
+            )
+
+        question_id, generated_code = _next_question_code(db)
+        requested_code = str((item.payload or {}).get("id", "")).strip().upper()
+        code = (
+            requested_code
+            if QUESTION_CODE_PATTERN.fullmatch(requested_code)
+            and not db.scalar(select(Question).where(Question.code == requested_code))
+            else generated_code
+        )
+        source = dict(data["source"])
+        source.update(
+            {
+                "review_id": item.id,
+                "upload_id": item.job.upload_id,
+                "original_file": item.job.upload.original_name,
+            }
+        )
+        question = Question(
+            id=question_id,
+            code=code,
+            owner_id=request.current_user.id,
+            module=data["module"],
+            question_type=data["question_type"],
+            difficulty=data["difficulty"],
+            stem=data["stem"],
+            options_json=data["options"],
+            answer=data["answer"],
+            analysis=data["analysis"],
+            tags_json=data["tags"],
+            source_json=source,
+            content_hash=content_hash,
+            status="published",
+            version=1,
+            source_review_id=item.id,
+            created_by=request.current_user.id,
+            updated_by=request.current_user.id,
+            published_by=request.current_user.id,
+            published_at=utcnow(),
+        )
+        db.add(question)
+        db.flush()
+        _replace_question_links(db, question, nodes, request.current_user.id)
+        _add_question_version(
+            db,
+            question,
+            request.current_user.id,
+            "AI 审核通过并建立正式题目",
+            [node.id for node in nodes],
+        )
+        _publish_question_snapshot(db, question, request.current_user.id)
+        _audit(
+            db,
+            request.current_user,
+            "review.approve_question",
+            "review_item",
+            item.id,
+            {"question_id": question.id},
+        )
+        db.commit()
+        return jsonify({"success": True, "question_id": question.id, "duplicate": False})
+
     published = PublishedContent(
         entity_type=item.entity_type,
         payload=item.payload,
@@ -2210,18 +3136,14 @@ def public_questions():
     db = SessionLocal()
     try:
         rows = db.scalars(
-            select(PublishedContent)
-            .where(PublishedContent.entity_type == "question", PublishedContent.status == "published")
-            .order_by(PublishedContent.created_at.desc())
+            select(PublishedQuestion).order_by(PublishedQuestion.published_at.desc())
         ).all()
-        items = []
-        for row in rows:
-            payload = dict(row.payload)
-            payload.pop("answer", None)
-            payload.pop("analysis", None)
-            payload["id"] = row.id
-            items.append(payload)
-        return jsonify({"items": items})
+        response = jsonify(
+            {"items": [_published_question_json(db, row, include_answers=False) for row in rows]}
+        )
+        version_sum = sum(row.version for row in rows)
+        response.set_etag(f"questions-{len(rows)}-{version_sum}")
+        return response.make_conditional(request)
     finally:
         SessionLocal.remove()
 

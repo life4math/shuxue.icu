@@ -139,6 +139,37 @@
   display: none;
 }
 
+.lecture-analysis-label {
+  display: block;
+  margin-top: 14px;
+}
+
+.lecture-question-options {
+  display: grid;
+  gap: 8px;
+  margin: 16px 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.lecture-question-options li {
+  display: grid;
+  grid-template-columns: 28px minmax(0, 1fr);
+  align-items: start;
+  gap: 6px;
+  color: var(--tx-2);
+}
+
+.lecture-question-options .lecture-block-text {
+  margin: 0;
+}
+
+.lecture-math-inline {
+  display: inline-block;
+  margin: 0 .08em;
+  color: var(--tx-1);
+}
+
 .lecture-math-display {
   overflow-x: auto;
   padding: 10px 0;

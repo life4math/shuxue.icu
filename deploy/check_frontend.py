@@ -19,6 +19,7 @@ RESOURCE_ATTRIBUTES = {
 }
 PAGE_SCRIPTS = {
     "admin.html": "admin.js",
+    "questions.html": "questions.js",
     "prep.html": "prep.js",
     "lecture.html": "lecture.js",
     "lectures.html": "lectures.js",

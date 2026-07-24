@@ -7,7 +7,7 @@
   <link rel="stylesheet" href="vendor/katex.min.css">
   <link rel="stylesheet" href="css/style.css?v=20260724-prep-1">
   <link rel="stylesheet" href="css/lecture.css?v=20260724-prep-1">
-  <link rel="stylesheet" href="css/prep.css?v=20260724-prep-2">
+  <link rel="stylesheet" href="css/prep.css?v=20260724-prep-3">
   <script src="vendor/katex.min.js"></script>
 </head>
 <body class="prep-body">
@@ -117,6 +117,7 @@
               </select>
             </label>
             <button id="block-add" class="btn-accent" type="button">添加到当前小节</button>
+            <button id="question-pick" class="btn-ghost" type="button">从题库选择</button>
           </div>
 
           <div id="block-editor" class="prep-block-editor">
@@ -161,8 +162,49 @@
     </footer>
   </section>
 
+  <dialog id="question-picker-dialog" class="question-picker-dialog">
+    <div class="question-picker-shell">
+      <header class="question-picker-header">
+        <div>
+          <span class="prep-kicker">PUBLISHED QUESTION BANK</span>
+          <h2>选择正式题目</h2>
+        </div>
+        <button id="question-picker-close" class="btn-ghost" type="button">关闭</button>
+      </header>
+      <form id="question-picker-form" class="question-picker-filters">
+        <input id="question-picker-query" type="search" placeholder="搜索编号或题干">
+        <select id="question-picker-module" aria-label="模块">
+          <option value="">全部模块</option>
+          <option value="FUNC">函数</option>
+          <option value="GEOM">几何</option>
+          <option value="ALGE">代数</option>
+          <option value="PROB">概率统计</option>
+          <option value="CALC">数列与微积分</option>
+        </select>
+        <select id="question-picker-type" aria-label="题型">
+          <option value="">全部题型</option>
+          <option value="choice">选择题</option>
+          <option value="fill">填空题</option>
+          <option value="solve">解答题</option>
+          <option value="proof">证明题</option>
+        </select>
+        <select id="question-picker-difficulty" aria-label="难度">
+          <option value="">全部难度</option>
+          <option value="1">难度 1</option>
+          <option value="2">难度 2</option>
+          <option value="3">难度 3</option>
+          <option value="4">难度 4</option>
+          <option value="5">难度 5</option>
+        </select>
+        <button class="btn-accent" type="submit">筛选</button>
+      </form>
+      <p id="question-picker-status" class="prep-muted" aria-live="polite"></p>
+      <div id="question-picker-results" class="question-picker-results"></div>
+    </div>
+  </dialog>
+
   <script src="js/themes.js?v=20260724-prep-1"></script>
-  <script src="js/lecture-renderer.js?v=20260724-prep-1"></script>
-  <script src="js/prep.js?v=20260724-prep-1"></script>
+  <script src="js/lecture-renderer.js?v=20260724-questions-2"></script>
+  <script src="js/prep.js?v=20260724-prep-2"></script>
 </body>
 </html>

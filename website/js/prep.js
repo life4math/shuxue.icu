@@ -17,6 +17,7 @@
     stageSlides: [],
     stageIndex: 0,
     stageReveal: false,
+    pickerItems: [],
   };
 
   const blockLabels = {
@@ -408,8 +409,24 @@
       addField(target, '解答', block.answer, value => { block.answer = value; }, { multiline: true, rows: 8 });
     } else if (block.type === 'question_ref') {
       addField(target, '题目编号', block.question_id, value => { block.question_id = value; });
+      addField(target, '稳定代码', block.code, value => { block.code = value; });
       addField(target, '显示标题', block.title, value => { block.title = value; });
       addField(target, '题干快照', block.stem, value => { block.stem = value; }, { multiline: true, rows: 8 });
+      addField(
+        target,
+        '选项快照（JSON）',
+        JSON.stringify(block.options || [], null, 2),
+        value => {
+          try {
+            block.options = JSON.parse(value);
+          } catch (_) {
+            setAutosaveStatus('选项 JSON 尚未完成');
+          }
+        },
+        { multiline: true, rows: 6 },
+      );
+      addField(target, '答案快照', block.answer, value => { block.answer = value; }, { multiline: true, rows: 5 });
+      addField(target, '解析快照', block.analysis, value => { block.analysis = value; }, { multiline: true, rows: 7 });
     } else if (block.type === 'knowledge_ref') {
       addField(target, '知识点 ID 或代码', block.node_id, value => { block.node_id = value; });
       addField(target, '显示标题', block.title, value => { block.title = value; });
@@ -450,6 +467,7 @@
     document.getElementById('lecture-unpublish').disabled = !exists || state.lecture.status !== 'published';
     document.getElementById('section-new').disabled = !exists;
     document.getElementById('block-add').disabled = !exists;
+    document.getElementById('question-pick').disabled = !exists;
     document.getElementById('lecture-rehearse').disabled = !exists;
     document.getElementById('lecture-status-badge').textContent =
       exists ? `${statusText(state.lecture.status)} · v${state.lecture.version}` : '未选择课次';
@@ -577,7 +595,17 @@
     if (type === 'math') Object.assign(block, { latex: 'f(x)=ax^2+bx+c', caption: '' });
     if (type === 'callout') Object.assign(block, { title: '核心要点', text: '', tone: 'key' });
     if (type === 'example') Object.assign(block, { title: '例题', stem: '', answer: '' });
-    if (type === 'question_ref') Object.assign(block, { question_id: '', title: '题目引用', stem: '' });
+    if (type === 'question_ref') Object.assign(block, {
+      question_id: '',
+      code: '',
+      title: '题目引用',
+      stem: '',
+      options: [],
+      answer: '',
+      analysis: '',
+      question_type: 'solve',
+      difficulty: 3,
+    });
     if (type === 'knowledge_ref') Object.assign(block, { node_id: '', title: '', note: '' });
     if (type === 'image') Object.assign(block, { url: '', alt: '', caption: '' });
     return block;
@@ -615,6 +643,100 @@
     renderBlockEditor();
   }
 
+  function pickerQueryString() {
+    const params = new URLSearchParams();
+    const values = {
+      query: document.getElementById('question-picker-query').value.trim(),
+      module: document.getElementById('question-picker-module').value,
+      question_type: document.getElementById('question-picker-type').value,
+      difficulty: document.getElementById('question-picker-difficulty').value,
+    };
+    Object.entries(values).forEach(([key, value]) => {
+      if (value) params.set(key, value);
+    });
+    params.set('limit', '60');
+    return params.toString();
+  }
+
+  function renderQuestionPicker() {
+    const target = document.getElementById('question-picker-results');
+    target.replaceChildren();
+    if (!state.pickerItems.length) {
+      target.append(create('p', 'prep-muted', '没有找到已发布题目。请先在正式题库中创建并发布题目。'));
+      return;
+    }
+    state.pickerItems.forEach(question => {
+      const card = create('article', 'question-picker-item');
+      card.append(
+        create('h3', '', `${question.code} · ${question.stem.slice(0, 52)}`),
+        create(
+          'p',
+          'question-picker-item-meta',
+          `${question.module} · ${question.question_type} · 难度 ${question.difficulty} · v${question.version}`,
+        ),
+        create('p', '', question.stem.slice(0, 180)),
+      );
+      const button = actionButton('插入当前小节', () => insertQuestion(question), 'btn-accent');
+      card.append(button);
+      target.append(card);
+    });
+  }
+
+  async function loadQuestionPicker() {
+    const status = document.getElementById('question-picker-status');
+    status.textContent = '正在读取已发布题目…';
+    try {
+      const data = await api(`/admin/question-picker?${pickerQueryString()}`);
+      state.pickerItems = data.items || [];
+      status.textContent = `共找到 ${state.pickerItems.length} 道题`;
+      renderQuestionPicker();
+    } catch (error) {
+      state.pickerItems = [];
+      status.textContent = `读取失败：${error.message}`;
+      renderQuestionPicker();
+    }
+  }
+
+  async function openQuestionPicker() {
+    if (!state.lecture) return;
+    const dialog = document.getElementById('question-picker-dialog');
+    if (typeof dialog.showModal === 'function') dialog.showModal();
+    else dialog.setAttribute('open', '');
+    await loadQuestionPicker();
+  }
+
+  function closeQuestionPicker() {
+    const dialog = document.getElementById('question-picker-dialog');
+    if (typeof dialog.close === 'function') dialog.close();
+    else dialog.removeAttribute('open');
+  }
+
+  function insertQuestion(question) {
+    let section = currentSection();
+    if (!section) section = state.lecture?.payload.sections[0];
+    if (!section) return;
+    state.selectedSectionId = section.id;
+    const block = {
+      id: uid('blk'),
+      type: 'question_ref',
+      question_id: question.id,
+      code: question.code,
+      title: question.code,
+      stem: question.stem,
+      options: question.options || [],
+      answer: question.answer || '',
+      analysis: question.analysis || '',
+      question_type: question.question_type,
+      difficulty: question.difficulty,
+    };
+    section.blocks.push(block);
+    state.selectedBlockId = block.id;
+    closeQuestionPicker();
+    markDirty();
+    renderBlockEditor();
+    setAutosaveStatus(`已插入正式题目 ${question.code}，发布讲义时会冻结当前题目版本`);
+  }
+
   function renderStage() {
     const target = document.getElementById('prep-stage-content');
     target.replaceChildren();
@@ -638,7 +760,7 @@
     document.getElementById('prep-stage-next').disabled =
       state.stageIndex === state.stageSlides.length - 1;
     document.getElementById('prep-stage-reveal').hidden =
-      !slide.block || slide.block.type !== 'example';
+      !slide.block || !['example', 'question_ref'].includes(slide.block.type);
   }
 
   function moveStage(offset) {
@@ -747,6 +869,12 @@
   });
   document.getElementById('section-new').addEventListener('click', addSection);
   document.getElementById('block-add').addEventListener('click', addBlock);
+  document.getElementById('question-pick').addEventListener('click', openQuestionPicker);
+  document.getElementById('question-picker-close').addEventListener('click', closeQuestionPicker);
+  document.getElementById('question-picker-form').addEventListener('submit', event => {
+    event.preventDefault();
+    loadQuestionPicker();
+  });
   document.getElementById('lecture-save').addEventListener('click', () => saveDraft(false));
   document.getElementById('lecture-submit').addEventListener('click', () => lectureAction('submit'));
   document.getElementById('lecture-publish').addEventListener('click', () => lectureAction('publish'));

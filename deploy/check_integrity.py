@@ -30,10 +30,12 @@ SKIP_NAME_SUFFIXES = (".min.js", ".min.css")
 # 关键文件必须包含的结构标记（缺失说明可能被截断/损坏）
 STRUCTURE_CHECKS = {
     "website/index.html": ["<!DOCTYPE html", "</html>", 'src="js/app.js'],
+    "website/questions.html": ["<!DOCTYPE html", "</html>", 'src="js/questions.js'],
     "website/prep.html": ["<!DOCTYPE html", "</html>", 'src="js/prep.js'],
     "website/lecture.html": ["<!DOCTYPE html", "</html>", 'src="js/lecture-renderer.js'],
     "website/js/app.js": ["function initPage"],
     "website/js/lecture-renderer.js": ["renderDocument", "renderBlock"],
+    "website/js/questions.js": ["function saveQuestion", "function renderPreview"],
     "website/js/prep.js": ["function markDirty", "function saveDraft"],
     "website/css/style.css": [":root"],
     "website/css/prep.css": [".prep-workspace[hidden]", ".prep-editor-form[hidden]"],
