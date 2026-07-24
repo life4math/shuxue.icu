@@ -12,33 +12,34 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
-  # ── 阶段一：校验（在 ECS 的自托管 Runner 上跑，但不碰生产目录）──
+  # ── 阶段一：校验（GitHub 托管 Runner，避免 ECS 直连 GitHub 仓库）──
   verify:
-    runs-on: [self-hosted, shuxue]
-    env:
-      PIP_INDEX_URL: https://mirrors.aliyun.com/pypi/simple
-      PIP_DISABLE_PIP_VERSION_CHECK: "1"
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
     steps:
       - name: 检出代码
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
 
+      - name: 配置 Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+          cache-dependency-path: requirements-py311.lock
+
       - name: 前端文件完整性校验
         run: |
-          python3.8 deploy/check_integrity.py
-          python3.8 deploy/check_frontend.py
+          python deploy/check_integrity.py
+          python deploy/check_frontend.py
           find website/js -maxdepth 1 -name '*.js' ! -name '*.min.js' -print0 \
             | xargs -0 -n1 node --check
 
       - name: 后端单元测试
         run: |
-          python3.8 -m venv "$RUNNER_TEMP/shuxue-ci-venv"
-          "$RUNNER_TEMP/shuxue-ci-venv/bin/python" -m pip install -q --upgrade "pip<26"
-          "$RUNNER_TEMP/shuxue-ci-venv/bin/python" -m pip install -q \
-            --require-hashes -r requirements-py38.lock
-          cd website/scripts
-          "$RUNNER_TEMP/shuxue-ci-venv/bin/python" -m pytest -q ../../tests
+          python -m pip install -q --require-hashes -r requirements-py311.lock
+          python -m pytest -q tests
 
       - name: 生成离线部署包
         if: github.event_name == 'workflow_dispatch' || contains(github.event.head_commit.message, '[deploy]')
@@ -53,28 +54,10 @@ jobs:
           if-no-files-found: error
           retention-days: 3
 
-  verify-python311:
-    runs-on: ubuntu-latest
-    steps:
-      - name: 检出代码
-        uses: actions/checkout@v4
-
-      - name: 配置 Python 3.11
-        uses: actions/setup-python@v5
-        with:
-          python-version: "3.11"
-          cache: pip
-          cache-dependency-path: requirements-py311.lock
-
-      - name: 验证 Python 3.11 正式运行时
-        run: |
-          python -m pip install -q --require-hashes -r requirements-py311.lock
-          python -m pytest -q tests
-
   # ── 阶段二：部署（校验通过后，更新生产目录并优雅重启）──
   deploy:
     if: github.event_name == 'workflow_dispatch' || contains(github.event.head_commit.message, '[deploy]')
-    needs: [verify, verify-python311]
+    needs: verify
     runs-on: [self-hosted, shuxue]
     steps:
       - name: 下载已校验的离线部署包
