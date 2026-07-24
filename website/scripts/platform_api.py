@@ -422,20 +422,24 @@ def upload(db):
     UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
     stored_name = f"{secrets.token_hex(16)}{ext}"
     destination = UPLOAD_DIR / stored_name
-    destination.write_bytes(content)
-
-    record = UploadFile(
-        owner_id=request.current_user.id,
-        original_name=original_name,
-        stored_name=stored_name,
-        sha256=digest,
-        content_type=file.mimetype or "",
-        size=len(content),
-    )
-    db.add(record)
-    db.flush()
-    _audit(db, request.current_user, "upload.create", "upload", record.id, {"name": original_name})
-    db.commit()
+    try:
+        destination.write_bytes(content)
+        record = UploadFile(
+            owner_id=request.current_user.id,
+            original_name=original_name,
+            stored_name=stored_name,
+            sha256=digest,
+            content_type=file.mimetype or "",
+            size=len(content),
+        )
+        db.add(record)
+        db.flush()
+        _audit(db, request.current_user, "upload.create", "upload", record.id, {"name": original_name})
+        db.commit()
+    except Exception:
+        db.rollback()
+        destination.unlink(missing_ok=True)
+        raise
     return jsonify({"upload": _upload_json(record), "duplicate": False}), 201
 
 
@@ -481,6 +485,9 @@ def _job_json(job):
         "status": job.status,
         "progress": job.progress,
         "error": job.error_message,
+        "attempt_count": job.attempt_count,
+        "max_attempts": current_app.config["AI_JOB_MAX_ATTEMPTS"],
+        "next_attempt_at": job.next_attempt_at.isoformat() if job.next_attempt_at else None,
         "created_at": job.created_at.isoformat(),
     }
 
@@ -495,6 +502,38 @@ def list_jobs(db):
         .limit(100)
     ).all()
     return jsonify({"items": [_job_json(item) for item in jobs]})
+
+
+@admin_api.post("/admin/jobs/<job_id>/retry")
+@login_required
+@csrf_required
+def retry_job(db, job_id):
+    job = db.get(AIJob, job_id)
+    if not job or job.owner_id != request.current_user.id:
+        return _json_error("job not found", 404)
+    if job.status != "failed":
+        return _json_error("only failed jobs can be retried", 409)
+
+    now = utcnow()
+    previous_attempts = job.attempt_count
+    job.status = "queued"
+    job.progress = 0
+    job.error_message = None
+    job.attempt_count = 0
+    job.next_attempt_at = now
+    job.heartbeat_at = None
+    job.finished_at = None
+    job.upload.status = "queued"
+    _audit(
+        db,
+        request.current_user,
+        "ai_job.retry",
+        "ai_job",
+        job.id,
+        {"previous_attempts": previous_attempts},
+    )
+    db.commit()
+    return jsonify({"job": _job_json(job)})
 
 
 @admin_api.get("/admin/reviews")
@@ -801,6 +840,9 @@ def configure_platform(app):
         ),
         LOGIN_IP_FAILURE_LIMIT=max(
             LOGIN_COOLDOWN_START, int(os.environ.get("SHUXUE_LOGIN_IP_LIMIT", "30"))
+        ),
+        AI_JOB_MAX_ATTEMPTS=max(
+            1, int(os.environ.get("SHUXUE_AI_MAX_ATTEMPTS", "3"))
         ),
         MAX_CONTENT_LENGTH=50 * 1024 * 1024,
     )

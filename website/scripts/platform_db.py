@@ -82,6 +82,8 @@ class AIJob(Base):
     attempt_count: Mapped[int] = mapped_column(Integer, default=0)
     token_usage: Mapped[int] = mapped_column(Integer, default=0)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
+    next_attempt_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True, index=True)
+    heartbeat_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True, index=True)
     started_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
     finished_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
 

@@ -15,7 +15,12 @@ Environment="SHUXUE_ENV=production"
 EnvironmentFile=-/etc/shuxue/shuxue.env
 ExecStartPre=/var/www/shuxue/venv311/bin/python migrate.py
 ExecStartPre=/var/www/shuxue/venv311/bin/python seed_knowledge.py --bootstrap-missing
-ExecStart=/var/www/shuxue/venv311/bin/gunicorn -w 2 -b 127.0.0.1:8000 server:app
+ExecStart=/var/www/shuxue/venv311/bin/gunicorn -w 2 -b 127.0.0.1:8000 --timeout 120 --graceful-timeout 30 server:app
+ExecReload=/var/www/shuxue/venv311/bin/python migrate.py
+ExecReload=/var/www/shuxue/venv311/bin/python seed_knowledge.py --bootstrap-missing
+ExecReload=/bin/kill -s HUP $MAINPID
+KillMode=mixed
+TimeoutStopSec=45
 Restart=always
 RestartSec=3
 

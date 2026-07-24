@@ -227,13 +227,39 @@ function renderJob(job) {
   title.textContent = job.status;
   const meta = document.createElement('div');
   meta.className = 'admin-row-meta';
-  meta.append(document.createTextNode(job.id), document.createTextNode(`${job.progress}%`));
+  const attempt = `第 ${job.attempt_count || 0}/${job.max_attempts || 3} 次`;
+  const schedule = job.next_attempt_at
+    ? ` · 下次尝试 ${new Date(job.next_attempt_at).toLocaleString()}`
+    : '';
+  meta.append(
+    document.createTextNode(job.id),
+    document.createTextNode(`${job.progress}% · ${attempt}${schedule}`),
+  );
   row.append(title, meta);
   if (job.error) {
     const error = document.createElement('p');
     error.className = 'admin-error';
     error.textContent = job.error;
     row.append(error);
+  }
+  if (job.status === 'failed') {
+    const actions = document.createElement('div');
+    actions.className = 'admin-row-actions';
+    const retry = document.createElement('button');
+    retry.className = 'btn-accent';
+    retry.textContent = '重新处理';
+    retry.addEventListener('click', async () => {
+      retry.disabled = true;
+      try {
+        await api(`/admin/jobs/${job.id}/retry`, { method: 'POST' });
+        await loadJobs();
+      } catch (err) {
+        window.alert(err.message);
+        retry.disabled = false;
+      }
+    });
+    actions.append(retry);
+    row.append(actions);
   }
   return row;
 }

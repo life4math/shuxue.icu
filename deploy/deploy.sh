@@ -221,7 +221,23 @@ install_nginx_config() {
 }
 
 restart_services() {
-    systemctl restart shuxue
+    local main_pid=""
+    local running_python=""
+    local desired_python=""
+
+    if systemctl is-active --quiet shuxue; then
+        main_pid="$(systemctl show shuxue -p MainPID --value)"
+        running_python="$(readlink -f "/proc/$main_pid/exe" 2>/dev/null || true)"
+        desired_python="$(readlink -f "$VENV_DIR/bin/python" 2>/dev/null || true)"
+    fi
+
+    if [ -n "$running_python" ] && [ "$running_python" = "$desired_python" ]; then
+        log "Web 服务使用兼容运行时，执行 Gunicorn 优雅重载。"
+        systemctl reload shuxue || systemctl restart shuxue
+    else
+        log "Web 服务运行时发生变化，执行一次完整重启。"
+        systemctl restart shuxue
+    fi
     systemctl restart shuxue-worker
 }
 

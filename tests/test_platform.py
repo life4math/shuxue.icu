@@ -53,11 +53,14 @@ def test_alembic_baseline_creates_and_versions_schema(tmp_path):
     assert result.returncode == 0, result.stderr
 
     engine = create_engine(f"sqlite:///{database_path}")
-    tables = set(inspect(engine).get_table_names())
+    inspector = inspect(engine)
+    tables = set(inspector.get_table_names())
     assert {"users", "knowledge_documents", "published_knowledge", "alembic_version"} <= tables
+    ai_job_columns = {item["name"] for item in inspector.get_columns("ai_jobs")}
+    assert {"next_attempt_at", "heartbeat_at"} <= ai_job_columns
     with engine.connect() as connection:
         assert connection.execute(text("SELECT version_num FROM alembic_version")).scalar_one() == (
-            "0001_platform_baseline"
+            "0002_ai_job_reliability"
         )
 
 
@@ -294,6 +297,121 @@ def test_upload_deduplicates_and_creates_job(tmp_path):
     job = client.post("/api/v1/admin/jobs", json={"upload_id": upload_id}, headers=headers)
     assert job.status_code == 201
     assert job.get_json()["job"]["status"] == "queued"
+    job_id = job.get_json()["job"]["id"]
+
+    db = db_module.SessionLocal()
+    stored_job = db.get(db_module.AIJob, job_id)
+    stored_job.status = "failed"
+    stored_job.attempt_count = 3
+    stored_job.error_message = "temporary failure"
+    stored_job.upload.status = "failed"
+    db.commit()
+    db_module.SessionLocal.remove()
+
+    retried = client.post(f"/api/v1/admin/jobs/{job_id}/retry", headers=headers)
+    assert retried.status_code == 200
+    assert retried.get_json()["job"]["status"] == "queued"
+    assert retried.get_json()["job"]["attempt_count"] == 0
+
+    duplicate_retry = client.post(f"/api/v1/admin/jobs/{job_id}/retry", headers=headers)
+    assert duplicate_retry.status_code == 409
+
+
+def test_worker_retries_then_marks_job_failed(tmp_path, monkeypatch):
+    _, db_module = build_app(tmp_path)
+    email, _ = create_user(db_module)
+    db = db_module.SessionLocal()
+    owner = db.scalar(select(db_module.User).where(db_module.User.email == email))
+    upload = db_module.UploadFile(
+        owner_id=owner.id,
+        original_name="retry.txt",
+        stored_name="retry.txt",
+        sha256="a" * 64,
+        content_type="text/plain",
+        size=5,
+    )
+    db.add(upload)
+    db.flush()
+    job = db_module.AIJob(upload_id=upload.id, owner_id=owner.id)
+    db.add(job)
+    db.commit()
+    job_id = job.id
+    db_module.SessionLocal.remove()
+
+    upload_dir = tmp_path / "worker-uploads"
+    upload_dir.mkdir()
+    (upload_dir / "retry.txt").write_text("retry", encoding="utf-8")
+    monkeypatch.setenv("SHUXUE_AI_MAX_ATTEMPTS", "3")
+    monkeypatch.setenv("SHUXUE_AI_RETRY_BASE_SECONDS", "1")
+    sys.modules.pop("worker", None)
+    worker = importlib.import_module("worker")
+    monkeypatch.setattr(worker, "UPLOAD_DIR", upload_dir)
+    monkeypatch.setattr(
+        worker,
+        "process_file",
+        lambda *_args: (_ for _ in ()).throw(RuntimeError("temporary AI failure")),
+    )
+
+    assert worker.process_next_job() is True
+    db = db_module.SessionLocal()
+    stored = db.get(db_module.AIJob, job_id)
+    assert stored.status == "queued"
+    assert stored.attempt_count == 1
+    assert stored.next_attempt_at is not None
+    stored.attempt_count = 2
+    stored.next_attempt_at = None
+    db.commit()
+    db_module.SessionLocal.remove()
+
+    assert worker.process_next_job() is True
+    db = db_module.SessionLocal()
+    stored = db.get(db_module.AIJob, job_id)
+    assert stored.status == "failed"
+    assert stored.attempt_count == 3
+    assert stored.upload.status == "failed"
+    db_module.SessionLocal.remove()
+
+
+def test_worker_recovers_interrupted_job(tmp_path, monkeypatch):
+    _, db_module = build_app(tmp_path)
+    email, _ = create_user(db_module)
+    db = db_module.SessionLocal()
+    owner = db.scalar(select(db_module.User).where(db_module.User.email == email))
+    upload = db_module.UploadFile(
+        owner_id=owner.id,
+        original_name="recover.txt",
+        stored_name="recover.txt",
+        sha256="b" * 64,
+        content_type="text/plain",
+        size=7,
+        status="processing",
+    )
+    db.add(upload)
+    db.flush()
+    job = db_module.AIJob(
+        upload_id=upload.id,
+        owner_id=owner.id,
+        status="extracting",
+        progress=35,
+        attempt_count=1,
+    )
+    db.add(job)
+    db.commit()
+    job_id = job.id
+    db_module.SessionLocal.remove()
+
+    monkeypatch.setenv("SHUXUE_AI_MAX_ATTEMPTS", "3")
+    sys.modules.pop("worker", None)
+    worker = importlib.import_module("worker")
+    assert worker.recover_interrupted_jobs() == 1
+
+    db = db_module.SessionLocal()
+    stored = db.get(db_module.AIJob, job_id)
+    assert stored.status == "queued"
+    assert stored.progress == 0
+    assert stored.next_attempt_at is not None
+    assert stored.upload.status == "queued"
+    db_module.SessionLocal.remove()
 
 
 def test_public_questions_hide_answer_and_analysis(tmp_path):

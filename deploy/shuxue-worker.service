@@ -10,6 +10,8 @@ WorkingDirectory=/var/www/shuxue/website/scripts
 Environment="PATH=/var/www/shuxue/venv311/bin:/usr/bin"
 EnvironmentFile=-/etc/shuxue/shuxue.env
 ExecStart=/var/www/shuxue/venv311/bin/python worker.py
+KillSignal=SIGTERM
+TimeoutStopSec=180
 Restart=always
 RestartSec=5
 
