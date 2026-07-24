@@ -36,6 +36,7 @@ STRUCTURE_CHECKS = {
     "website/js/lecture-renderer.js": ["renderDocument", "renderBlock"],
     "website/js/prep.js": ["function markDirty", "function saveDraft"],
     "website/css/style.css": [":root"],
+    "website/css/prep.css": [".prep-workspace[hidden]", ".prep-editor-form[hidden]"],
     "requirements-py38.lock": ["--hash=sha256:"],
     "requirements-py311.lock": ["--hash=sha256:"],
     "website/data/demo-content.json": ['"questions"', '"methods"'],

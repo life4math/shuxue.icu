@@ -5,6 +5,14 @@
   color: var(--tx-1);
 }
 
+.prep-workspace[hidden],
+.prep-empty-state[hidden],
+.prep-compact-form[hidden],
+.prep-editor-form[hidden],
+.prep-editor-empty[hidden] {
+  display: none;
+}
+
 .prep-header {
   height: 64px;
   padding: 0 22px;
