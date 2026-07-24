@@ -179,6 +179,8 @@ python3.11 -m venv "$VENV_DIR"
 source "$VENV_DIR/bin/activate"
 pip install --upgrade "pip<27" -q
 pip install --require-hashes -r "$PROJECT_DIR/requirements-py311.lock" -q
+chown -R root:root "$VENV_DIR"
+chmod -R a+rX "$VENV_DIR"
 
 echo -e "${GREEN}  -> Python 依赖安装完成${NC}"
 python -c "import flask; print(f'  Flask {flask.__version__}')"

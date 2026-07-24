@@ -88,6 +88,10 @@ ensure_runtime() {
     "$VENV_DIR/bin/python" -c \
         'import sys; assert sys.version_info[:2] == (3, 11), sys.version'
     "$VENV_DIR/bin/python" -m pip install -q --upgrade "pip<27"
+    # systemd 以 nginx 用户启动应用。无论 root 的 umask 如何，都确保
+    # nginx 可以遍历并读取虚拟环境，同时保持环境归 root 管理。
+    chown -R root:root "$VENV_DIR"
+    chmod -R a+rX "$VENV_DIR"
 }
 
 sync_rollback_deps() {
