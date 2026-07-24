@@ -127,14 +127,18 @@
 .knowledge-admin-list .admin-row.selected { border-color: var(--accent); background: var(--accent-dim); }
 .knowledge-admin-form { display:grid; gap:14px; }
 .knowledge-admin-form label { display:grid; gap:7px; color:var(--tx-2); font-size:12px; }
-.knowledge-admin-form input, .knowledge-admin-form textarea {
+.knowledge-admin-form input, .knowledge-admin-form textarea, .knowledge-admin-form select {
   width:100%; box-sizing:border-box; padding:10px 12px; border:1px solid var(--line-strong);
   background:var(--bg-0); color:var(--tx-1); outline:none; font:13px/1.6 var(--font-body);
 }
 .knowledge-admin-form textarea { font-family: ui-monospace, SFMono-Regular, Consolas, monospace; resize:vertical; }
-.knowledge-admin-form input:focus, .knowledge-admin-form textarea:focus { border-color:var(--accent); }
+.knowledge-admin-form input:focus, .knowledge-admin-form textarea:focus, .knowledge-admin-form select:focus { border-color:var(--accent); }
 .knowledge-admin-actions { display:flex; flex-wrap:wrap; gap:8px; }
+.knowledge-node-fields { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:12px; }
+.knowledge-node-fields label { margin:0; }
+.danger-button { color:var(--err); }
 @media (max-width: 800px) { .knowledge-admin-layout { grid-template-columns:1fr; } }
+@media (max-width: 620px) { .knowledge-node-fields { grid-template-columns:1fr; } }
 
 .user-admin-layout { display:grid; grid-template-columns:minmax(220px,.7fr) minmax(0,1.5fr); gap:20px; }
 .user-admin-list { max-height: 520px; overflow:auto; }

@@ -1,6 +1,7 @@
 const API_ROOT = '/api/v1';
 let csrfToken = '';
 let currentUser = null;
+let knowledgeNodes = [];
 let knowledgeDocuments = [];
 let users = [];
 
@@ -34,6 +35,7 @@ function setLoggedOut() {
   if (userCard) {
     userCard.hidden = true;
   }
+  knowledgeNodes = [];
   knowledgeDocuments = [];
   users = [];
 }
@@ -115,10 +117,181 @@ document.getElementById('upload-form').addEventListener('submit', async event =>
 document.getElementById('refresh-button').addEventListener('click', refreshConsole);
 
 async function refreshConsole() {
-  const tasks = [loadJobs(), loadReviews(), loadKnowledgeDocuments()];
+  const tasks = [loadJobs(), loadReviews(), loadKnowledgeNodes()];
   if (isAdmin()) tasks.push(loadUsers());
   await Promise.all(tasks);
+  await loadKnowledgeDocuments();
 }
+
+async function loadKnowledgeNodes(preferredId = '') {
+  const target = document.getElementById('knowledge-node-list');
+  if (!target) return;
+  try {
+    const data = await api('/admin/knowledge/nodes');
+    knowledgeNodes = data.items || [];
+    target.replaceChildren(...knowledgeNodes.map(renderKnowledgeNode));
+    if (!knowledgeNodes.length) {
+      target.textContent = '暂无知识节点，请创建第一个根节点。';
+      clearKnowledgeNodeForm();
+      return;
+    }
+    refreshKnowledgeParentOptions();
+    const selected = preferredId || document.getElementById('knowledge-node-id').value;
+    const available = knowledgeNodes.some(item => item.id === selected);
+    selectKnowledgeNodeAdmin(available ? selected : knowledgeNodes[0].id);
+  } catch (err) {
+    target.textContent = err.message;
+  }
+}
+
+function renderKnowledgeNode(item) {
+  const row = document.createElement('div');
+  row.className = 'admin-row';
+  row.dataset.nodeId = item.id;
+  row.addEventListener('click', () => selectKnowledgeNodeAdmin(item.id));
+  const heading = document.createElement('strong');
+  heading.textContent = item.title;
+  const meta = document.createElement('div');
+  meta.className = 'admin-row-meta';
+  meta.append(
+    document.createTextNode(item.code),
+    document.createTextNode(`${item.node_type} · ${item.status} · v${item.version}`),
+  );
+  row.append(heading, meta);
+  return row;
+}
+
+function refreshKnowledgeParentOptions() {
+  const select = document.getElementById('knowledge-node-parent');
+  const current = select.value;
+  const selectedId = document.getElementById('knowledge-node-id').value;
+  select.replaceChildren(new Option('作为根节点', ''));
+  knowledgeNodes
+    .filter(item => item.id !== selectedId && !['archived', 'merged'].includes(item.status))
+    .forEach(item => select.add(new Option(`${item.code} · ${item.title}`, item.id)));
+  if ([...select.options].some(option => option.value === current)) select.value = current;
+}
+
+function selectKnowledgeNodeAdmin(nodeId) {
+  const item = knowledgeNodes.find(entry => entry.id === nodeId);
+  if (!item) return;
+  document.getElementById('knowledge-node-id').value = item.id;
+  document.getElementById('knowledge-node-version').value = item.version;
+  document.getElementById('knowledge-node-code').value = item.code;
+  document.getElementById('knowledge-node-code').readOnly = true;
+  document.getElementById('knowledge-node-title').value = item.title;
+  document.getElementById('knowledge-node-type').value = item.node_type;
+  document.getElementById('knowledge-node-knowledge-type').value = item.knowledge_type;
+  document.getElementById('knowledge-node-sort').value = item.sort_order;
+  document.getElementById('knowledge-node-metadata').value = JSON.stringify(item.metadata || {}, null, 2);
+  refreshKnowledgeParentOptions();
+  document.getElementById('knowledge-node-parent').value = item.parent_id || '';
+  document.querySelectorAll('#knowledge-node-list .admin-row').forEach(row => {
+    row.classList.toggle('selected', row.dataset.nodeId === nodeId);
+  });
+  selectKnowledgeContentForNode(item);
+}
+
+function clearKnowledgeNodeForm() {
+  document.getElementById('knowledge-node-id').value = '';
+  document.getElementById('knowledge-node-version').value = '';
+  document.getElementById('knowledge-node-code').value = '';
+  document.getElementById('knowledge-node-code').readOnly = false;
+  document.getElementById('knowledge-node-title').value = '';
+  document.getElementById('knowledge-node-parent').value = '';
+  document.getElementById('knowledge-node-type').value = 'concept';
+  document.getElementById('knowledge-node-knowledge-type').value = 'concept';
+  document.getElementById('knowledge-node-sort').value = '0';
+  document.getElementById('knowledge-node-metadata').value = '{}';
+  refreshKnowledgeParentOptions();
+  document.querySelectorAll('#knowledge-node-list .admin-row').forEach(row => row.classList.remove('selected'));
+}
+
+function readKnowledgeNodeForm() {
+  const id = document.getElementById('knowledge-node-id').value;
+  const metadata = JSON.parse(document.getElementById('knowledge-node-metadata').value || '{}');
+  const payload = {
+    title: document.getElementById('knowledge-node-title').value.trim(),
+    parent_id: document.getElementById('knowledge-node-parent').value || null,
+    node_type: document.getElementById('knowledge-node-type').value,
+    knowledge_type: document.getElementById('knowledge-node-knowledge-type').value,
+    sort_order: Number(document.getElementById('knowledge-node-sort').value || 0),
+    metadata,
+  };
+  if (id) payload.version = Number(document.getElementById('knowledge-node-version').value);
+  else payload.code = document.getElementById('knowledge-node-code').value.trim();
+  return { id, payload };
+}
+
+async function saveKnowledgeNode() {
+  const status = document.getElementById('knowledge-node-status');
+  try {
+    const { id, payload } = readKnowledgeNodeForm();
+    if (!payload.title) {
+      status.textContent = '标题不能为空';
+      return;
+    }
+    const data = await api(id ? `/admin/knowledge/nodes/${encodeURIComponent(id)}` : '/admin/knowledge/nodes', {
+      method: id ? 'PATCH' : 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    });
+    status.textContent = id ? '结构草稿已保存，公开树尚未改变。' : '知识节点已创建，请检查后发布。';
+    await loadKnowledgeNodes(data.node.id);
+    await loadKnowledgeDocuments();
+  } catch (err) {
+    status.textContent = `失败：${err.message}`;
+  }
+}
+
+async function publishKnowledgeNode() {
+  const id = document.getElementById('knowledge-node-id').value;
+  const status = document.getElementById('knowledge-node-status');
+  if (!id) {
+    status.textContent = '请先保存新节点';
+    return;
+  }
+  try {
+    const version = Number(document.getElementById('knowledge-node-version').value);
+    const data = await api(`/admin/knowledge/nodes/${encodeURIComponent(id)}/publish`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ version }),
+    });
+    status.textContent = '知识结构已发布到公开网站。';
+    await loadKnowledgeNodes(data.node.id);
+  } catch (err) {
+    status.textContent = `失败：${err.message}`;
+  }
+}
+
+async function archiveKnowledgeNode() {
+  const id = document.getElementById('knowledge-node-id').value;
+  const item = knowledgeNodes.find(entry => entry.id === id);
+  const status = document.getElementById('knowledge-node-status');
+  if (!item) return;
+  if (!window.confirm(`确认归档“${item.title}”？有未归档子节点时系统会拒绝操作。`)) return;
+  try {
+    await api(`/admin/knowledge/nodes/${encodeURIComponent(id)}/archive`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ version: item.version }),
+    });
+    status.textContent = '知识节点已归档，并从公开知识树移除。';
+    clearKnowledgeNodeForm();
+    await loadKnowledgeNodes();
+  } catch (err) {
+    status.textContent = `失败：${err.message}`;
+  }
+}
+
+document.getElementById('knowledge-node-form')?.addEventListener('submit', event => {
+  event.preventDefault();
+  saveKnowledgeNode();
+});
+document.getElementById('knowledge-node-new')?.addEventListener('click', clearKnowledgeNodeForm);
+document.getElementById('knowledge-node-publish')?.addEventListener('click', publishKnowledgeNode);
+document.getElementById('knowledge-node-archive')?.addEventListener('click', archiveKnowledgeNode);
 
 async function loadKnowledgeDocuments() {
   const target = document.getElementById('knowledge-admin-list');
@@ -128,10 +301,15 @@ async function loadKnowledgeDocuments() {
     knowledgeDocuments = data.items || [];
     target.replaceChildren(...knowledgeDocuments.map(renderKnowledgeDocument));
     if (!knowledgeDocuments.length) {
-      target.textContent = '暂无数据库知识正文，请先运行 seed_knowledge.py';
+      target.textContent = '暂无知识正文；请在上方选择知识节点后开始编写。';
+      const selectedNode = knowledgeNodes.find(item => item.id === document.getElementById('knowledge-node-id').value);
+      if (selectedNode) selectKnowledgeContentForNode(selectedNode);
       return;
     }
-    if (!document.getElementById('knowledge-admin-node-id').value) {
+    const selectedNode = knowledgeNodes.find(item => item.id === document.getElementById('knowledge-node-id').value);
+    if (selectedNode) {
+      selectKnowledgeContentForNode(selectedNode);
+    } else if (!document.getElementById('knowledge-admin-node-id').value) {
       selectKnowledgeDocument(knowledgeDocuments[0].node_id);
     }
   } catch (err) {
@@ -154,7 +332,7 @@ function renderKnowledgeDocument(item) {
 }
 
 function selectKnowledgeDocument(nodeId) {
-  const item = knowledgeDocuments.find(entry => entry.node_id === nodeId);
+  const item = knowledgeDocuments.find(entry => entry.node_id === nodeId || entry.knowledge_node_id === nodeId);
   if (!item) return;
   document.getElementById('knowledge-admin-node-id').value = item.node_id;
   document.getElementById('knowledge-admin-title').value = item.title || '';
@@ -162,6 +340,23 @@ function selectKnowledgeDocument(nodeId) {
   document.querySelectorAll('#knowledge-admin-list .admin-row').forEach(row => {
     row.classList.toggle('selected', row.dataset.nodeId === nodeId);
   });
+}
+
+function selectKnowledgeContentForNode(node) {
+  const item = knowledgeDocuments.find(entry =>
+    entry.knowledge_node_id === node.id || entry.node_id === node.code
+  );
+  if (item) {
+    selectKnowledgeDocument(item.knowledge_node_id || item.node_id);
+    return;
+  }
+  document.getElementById('knowledge-admin-node-id').value = node.code;
+  document.getElementById('knowledge-admin-title').value = node.title;
+  document.getElementById('knowledge-admin-payload').value = JSON.stringify({
+    title: node.title,
+    sections: [{ title: '定义与说明', items: [{ text: '请在此输入知识点正文。' }] }],
+  }, null, 2);
+  document.querySelectorAll('#knowledge-admin-list .admin-row').forEach(row => row.classList.remove('selected'));
 }
 
 function readKnowledgeForm() {

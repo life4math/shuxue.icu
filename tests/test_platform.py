@@ -60,8 +60,95 @@ def test_alembic_baseline_creates_and_versions_schema(tmp_path):
     assert {"next_attempt_at", "heartbeat_at"} <= ai_job_columns
     with engine.connect() as connection:
         assert connection.execute(text("SELECT version_num FROM alembic_version")).scalar_one() == (
-            "0002_ai_job_reliability"
+            "0003_dynamic_knowledge_graph"
         )
+        assert connection.execute(text("SELECT COUNT(*) FROM knowledge_nodes")).scalar_one() == 71
+        assert connection.execute(
+            text("SELECT COUNT(*) FROM knowledge_nodes WHERE parent_id IS NULL")
+        ).scalar_one() == 5
+        assert connection.execute(
+            text("SELECT COUNT(DISTINCT id) FROM knowledge_nodes")
+        ).scalar_one() == 71
+    assert {
+        "knowledge_nodes",
+        "knowledge_node_versions",
+        "knowledge_aliases",
+        "knowledge_relations",
+        "published_knowledge_nodes",
+        "published_knowledge_relations",
+    } <= tables
+
+
+def test_dynamic_graph_migration_upgrades_legacy_content_tables(tmp_path):
+    database_path = tmp_path / "legacy-migration.db"
+    engine = create_engine(f"sqlite:///{database_path}")
+    with engine.begin() as connection:
+        connection.execute(text("CREATE TABLE alembic_version (version_num VARCHAR(40) PRIMARY KEY)"))
+        connection.execute(
+            text("INSERT INTO alembic_version (version_num) VALUES ('0002_ai_job_reliability')")
+        )
+        connection.execute(text("CREATE TABLE users (id VARCHAR(40) PRIMARY KEY)"))
+        connection.execute(
+            text(
+                "CREATE TABLE knowledge_documents ("
+                "id VARCHAR(40) PRIMARY KEY, node_id VARCHAR(40) UNIQUE, "
+                "title VARCHAR(160), status VARCHAR(24), version INTEGER, payload JSON)"
+            )
+        )
+        connection.execute(
+            text(
+                "CREATE TABLE published_knowledge ("
+                "node_id VARCHAR(40) PRIMARY KEY, title VARCHAR(160), "
+                "version INTEGER, payload JSON)"
+            )
+        )
+        connection.execute(
+            text(
+                "INSERT INTO knowledge_documents "
+                "(id, node_id, title, status, version, payload) "
+                "VALUES ('kdoc_legacy', 'FUNC-01-01', '集合', 'published', 1, '{}')"
+            )
+        )
+        connection.execute(
+            text(
+                "INSERT INTO published_knowledge "
+                "(node_id, title, version, payload) "
+                "VALUES ('FUNC-01-01', '集合', 1, '{}')"
+            )
+        )
+
+    environment = os.environ.copy()
+    environment["SHUXUE_DATABASE_URL"] = f"sqlite:///{database_path}"
+    result = subprocess.run(
+        [sys.executable, os.path.join(SCRIPT_DIR, "migrate.py")],
+        cwd=ROOT,
+        env=environment,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert result.returncode == 0, result.stderr
+
+    inspector = inspect(engine)
+    assert "knowledge_node_id" in {
+        item["name"] for item in inspector.get_columns("knowledge_documents")
+    }
+    with engine.connect() as connection:
+        expected_id = connection.execute(
+            text("SELECT id FROM knowledge_nodes WHERE code = 'FUNC-01-01'")
+        ).scalar_one()
+        assert connection.execute(
+            text(
+                "SELECT knowledge_node_id FROM knowledge_documents "
+                "WHERE node_id = 'FUNC-01-01'"
+            )
+        ).scalar_one() == expected_id
+        assert connection.execute(
+            text(
+                "SELECT knowledge_node_id FROM published_knowledge "
+                "WHERE node_id = 'FUNC-01-01'"
+            )
+        ).scalar_one() == expected_id
 
 
 def test_public_demo_json_is_read_only(tmp_path):
@@ -489,6 +576,211 @@ def test_knowledge_document_draft_submit_publish_and_public_read(tmp_path):
     updated_public = client.get("/api/v1/public/knowledge/FUNC-01-01")
     assert updated_public.get_json()["knowledge"]["payload"]["sections"][0]["items"][0]["math"] == "b\\in B"
     assert updated_public.headers["ETag"] != first_etag
+
+
+def test_dynamic_knowledge_node_create_move_publish_and_archive(tmp_path):
+    app, db_module = build_app(tmp_path)
+    email, password = create_user(db_module)
+    client = app.test_client()
+    csrf = login(client, email, password)
+    headers = {"X-CSRF-Token": csrf, "Content-Type": "application/json"}
+
+    initial_tree = client.get("/api/v1/public/knowledge-tree")
+    assert initial_tree.status_code == 200
+    assert initial_tree.get_json()["node_count"] == 71
+    assert [item["code"] for item in initial_tree.get_json()["items"]] == [
+        "FUNC",
+        "GEOM",
+        "ALGE",
+        "PROB",
+        "CALC",
+    ]
+
+    created = client.post(
+        "/api/v1/admin/knowledge/nodes",
+        json={
+            "title": "新增动态知识点",
+            "parent_id": "FUNC-01",
+            "node_type": "concept",
+            "knowledge_type": "procedure",
+            "metadata": {"difficulty": [2, 4], "examFrequency": "medium"},
+        },
+        headers=headers,
+    )
+    assert created.status_code == 201
+    node = created.get_json()["node"]
+    assert node["id"].startswith("kn_")
+    assert node["code"].startswith("KN-")
+    assert node["status"] == "draft"
+    assert client.get("/api/v1/public/knowledge-tree").get_json()["node_count"] == 71
+
+    moved = client.patch(
+        f"/api/v1/admin/knowledge/nodes/{node['id']}",
+        json={
+            "version": node["version"],
+            "title": "移动后的知识点",
+            "parent_id": "GEOM-01",
+            "sort_order": 9,
+        },
+        headers=headers,
+    )
+    assert moved.status_code == 200
+    moved_node = moved.get_json()["node"]
+    assert moved_node["code"] == node["code"]
+    assert moved_node["version"] == 2
+    assert moved_node["status"] == "draft"
+
+    stale = client.patch(
+        f"/api/v1/admin/knowledge/nodes/{node['id']}",
+        json={"version": 1, "title": "冲突更新"},
+        headers=headers,
+    )
+    assert stale.status_code == 409
+    assert stale.get_json()["current_version"] == 2
+
+    cycle = client.patch(
+        "/api/v1/admin/knowledge/nodes/FUNC",
+        json={"version": 1, "parent_id": "FUNC-01"},
+        headers=headers,
+    )
+    assert cycle.status_code == 409
+
+    published = client.post(
+        f"/api/v1/admin/knowledge/nodes/{node['id']}/publish",
+        json={"version": 2},
+        headers=headers,
+    )
+    assert published.status_code == 200
+    public_tree = client.get("/api/v1/public/knowledge-tree").get_json()
+    assert public_tree["node_count"] == 72
+
+    body = {
+        "title": "移动后的知识点",
+        "sections": [{"title": "定义", "items": [{"text": "动态正文", "math": "x>0"}]}],
+    }
+    assert client.put(
+        f"/api/v1/admin/knowledge/{node['id']}",
+        json=body,
+        headers=headers,
+    ).status_code == 200
+    assert client.post(
+        f"/api/v1/admin/knowledge/{node['id']}/publish",
+        headers={"X-CSRF-Token": csrf},
+    ).status_code == 200
+    detail = client.get(f"/api/v1/public/knowledge/{node['code']}")
+    assert detail.status_code == 200
+    assert detail.get_json()["knowledge"]["knowledge_node_id"] == node["id"]
+
+    archived = client.post(
+        f"/api/v1/admin/knowledge/nodes/{node['id']}/archive",
+        json={"version": 2},
+        headers=headers,
+    )
+    assert archived.status_code == 200
+    assert client.get("/api/v1/public/knowledge-tree").get_json()["node_count"] == 71
+    assert client.get(f"/api/v1/public/knowledge/{node['code']}").status_code == 404
+
+
+def test_knowledge_relation_draft_publish_and_republish(tmp_path):
+    app, db_module = build_app(tmp_path)
+    email, password = create_user(db_module)
+    client = app.test_client()
+    csrf = login(client, email, password)
+    headers = {"X-CSRF-Token": csrf, "Content-Type": "application/json"}
+
+    created = client.post(
+        "/api/v1/admin/knowledge/relations",
+        json={
+            "source_node_id": "FUNC-01-01",
+            "target_node_id": "FUNC-02-01",
+            "relation_type": "prerequisite",
+            "weight": 80,
+        },
+        headers=headers,
+    )
+    assert created.status_code == 201
+    relation = created.get_json()["relation"]
+    assert relation["status"] == "draft"
+    assert client.get("/api/v1/public/knowledge-tree").get_json()["relations"] == []
+
+    published = client.post(
+        f"/api/v1/admin/knowledge/relations/{relation['id']}/publish",
+        json={"version": 1},
+        headers=headers,
+    )
+    assert published.status_code == 200
+    public_relation = client.get("/api/v1/public/knowledge-tree").get_json()["relations"][0]
+    assert public_relation["weight"] == 80
+
+    updated = client.patch(
+        f"/api/v1/admin/knowledge/relations/{relation['id']}",
+        json={"version": 1, "weight": 95},
+        headers=headers,
+    )
+    assert updated.status_code == 200
+    assert updated.get_json()["relation"]["version"] == 2
+    assert client.get("/api/v1/public/knowledge-tree").get_json()["relations"][0]["weight"] == 80
+
+    republished = client.post(
+        f"/api/v1/admin/knowledge/relations/{relation['id']}/publish",
+        json={"version": 2},
+        headers=headers,
+    )
+    assert republished.status_code == 200
+    assert client.get("/api/v1/public/knowledge-tree").get_json()["relations"][0]["weight"] == 95
+
+
+def test_merged_knowledge_code_redirects_to_published_target(tmp_path):
+    app, db_module = build_app(tmp_path)
+    email, password = create_user(db_module)
+    client = app.test_client()
+    csrf = login(client, email, password)
+    headers = {"X-CSRF-Token": csrf, "Content-Type": "application/json"}
+
+    created_nodes = []
+    for code, title in (("TEST-SOURCE", "待合并节点"), ("TEST-TARGET", "目标节点")):
+        response = client.post(
+            "/api/v1/admin/knowledge/nodes",
+            json={"code": code, "title": title, "node_type": "concept"},
+            headers=headers,
+        )
+        assert response.status_code == 201
+        node = response.get_json()["node"]
+        assert client.post(
+            f"/api/v1/admin/knowledge/nodes/{node['id']}/publish",
+            json={"version": 1},
+            headers=headers,
+        ).status_code == 200
+        created_nodes.append(node)
+    source, target = created_nodes
+
+    payload = {
+        "title": "目标节点",
+        "sections": [{"title": "说明", "items": [{"text": "合并后继续保留的正式正文"}]}],
+    }
+    assert client.put(
+        f"/api/v1/admin/knowledge/{target['id']}",
+        json=payload,
+        headers=headers,
+    ).status_code == 200
+    assert client.post(
+        f"/api/v1/admin/knowledge/{target['id']}/publish",
+        headers={"X-CSRF-Token": csrf},
+    ).status_code == 200
+
+    merged = client.post(
+        f"/api/v1/admin/knowledge/nodes/{source['id']}/merge",
+        json={"version": 1, "target_id": target["id"]},
+        headers=headers,
+    )
+    assert merged.status_code == 200
+    assert merged.get_json()["node"]["status"] == "merged"
+    public = client.get("/api/v1/public/knowledge/TEST-SOURCE")
+    assert public.status_code == 200
+    assert public.get_json()["knowledge"]["code"] == "TEST-TARGET"
+    assert public.get_json()["knowledge"]["payload"]["sections"][0]["items"][0]["text"] == (
+        "合并后继续保留的正式正文"
+    )
 
 
 def test_existing_published_knowledge_is_backfilled_on_upgrade(tmp_path):

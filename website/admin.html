@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>教师后台 · shuxue.icu</title>
   <link rel="stylesheet" href="css/style.css?v=20260723-admin-1">
-  <link rel="stylesheet" href="css/admin.css?v=20260723-admin-1">
+  <link rel="stylesheet" href="css/admin.css?v=20260724-knowledge-graph-1">
 </head>
 <body class="admin-body">
   <header class="admin-header">
@@ -63,14 +63,64 @@
       <article class="admin-card knowledge-admin-card">
         <div class="admin-card-heading">
           <div>
-            <p class="admin-kicker">04 · KNOWLEDGE CMS</p>
-            <h2>知识点内容管理</h2>
+            <p class="admin-kicker">04 · KNOWLEDGE GRAPH</p>
+            <h2>知识节点管理</h2>
+          </div>
+          <span id="knowledge-node-status" class="admin-status" aria-live="polite"></span>
+        </div>
+        <p class="admin-muted">每个知识点都有永久内部 ID。移动节点只修改父节点与排序，不会改变代码；结构修改发布后才会出现在公开网站。</p>
+        <div class="knowledge-admin-layout">
+          <div id="knowledge-node-list" class="admin-list knowledge-admin-list"></div>
+          <form id="knowledge-node-form" class="knowledge-admin-form">
+            <input id="knowledge-node-id" type="hidden">
+            <input id="knowledge-node-version" type="hidden">
+            <label>稳定代码<input id="knowledge-node-code" type="text" maxlength="80" placeholder="留空可自动生成"></label>
+            <label>标题<input id="knowledge-node-title" type="text" maxlength="160" required></label>
+            <label>父节点
+              <select id="knowledge-node-parent"><option value="">作为根节点</option></select>
+            </label>
+            <div class="knowledge-node-fields">
+              <label>目录类型
+                <select id="knowledge-node-type">
+                  <option value="domain">domain · 领域</option>
+                  <option value="module">module · 模块</option>
+                  <option value="topic">topic · 主题</option>
+                  <option value="concept">concept · 知识点</option>
+                  <option value="skill">skill · 技能</option>
+                </select>
+              </label>
+              <label>知识类型
+                <select id="knowledge-node-knowledge-type">
+                  <option value="concept">concept · 概念</option>
+                  <option value="memory">memory · 记忆</option>
+                  <option value="procedure">procedure · 方法</option>
+                  <option value="design">design · 设计</option>
+                </select>
+              </label>
+              <label>同级排序<input id="knowledge-node-sort" type="number" min="0" value="0"></label>
+            </div>
+            <label>扩展属性（JSON）<textarea id="knowledge-node-metadata" rows="7" spellcheck="false">{}</textarea></label>
+            <div class="knowledge-admin-actions">
+              <button class="btn-ghost" type="button" id="knowledge-node-new">新建</button>
+              <button class="btn-accent" type="submit">保存结构草稿</button>
+              <button class="btn-accent" type="button" id="knowledge-node-publish">发布结构</button>
+              <button class="btn-ghost danger-button" type="button" id="knowledge-node-archive">归档</button>
+            </div>
+          </form>
+        </div>
+      </article>
+
+      <article class="admin-card knowledge-admin-card">
+        <div class="admin-card-heading">
+          <div>
+            <p class="admin-kicker">05 · KNOWLEDGE CONTENT</p>
+            <h2>知识点正文管理</h2>
           </div>
           <span id="knowledge-admin-status" class="admin-status" aria-live="polite"></span>
         </div>
-        <p class="admin-muted">编辑后先保存草稿，再提交审核或直接发布。正文中的 math 和 suffixMath 使用 KaTeX 源码。</p>
+        <p class="admin-muted">先在上方选择知识节点，再编辑正文。正文中的 math 和 suffixMath 使用 KaTeX 源码；草稿不会覆盖公开版本。</p>
         <div class="knowledge-admin-layout">
-          <div id="knowledge-admin-list" class="admin-list"></div>
+          <div id="knowledge-admin-list" class="admin-list knowledge-admin-list"></div>
           <form id="knowledge-admin-form" class="knowledge-admin-form">
             <input id="knowledge-admin-node-id" type="hidden">
             <label>标题<input id="knowledge-admin-title" type="text" maxlength="160" required></label>
@@ -88,7 +138,7 @@
       <article id="users-admin-card" class="admin-card admin-only" hidden>
         <div class="admin-card-heading">
           <div>
-            <p class="admin-kicker">05 · USERS</p>
+            <p class="admin-kicker">06 · USERS</p>
             <h2>账号注册与管理</h2>
           </div>
           <span id="user-admin-status" class="admin-status" aria-live="polite"></span>
@@ -119,6 +169,6 @@
     </section>
   </main>
 
-  <script src="js/admin.js?v=20260724-admin-5"></script>
+  <script src="js/admin.js?v=20260724-knowledge-graph-1"></script>
 </body>
 </html>

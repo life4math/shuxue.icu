@@ -1,7 +1,9 @@
 """教师后台账号、上传任务、审核与发布 API。"""
 
 import hashlib
+import json
 import os
+import re
 import secrets
 from datetime import timedelta
 from functools import wraps
@@ -9,21 +11,30 @@ from pathlib import Path
 
 from flask import Blueprint, current_app, jsonify, request, session
 from sqlalchemy import delete, func, or_, select, text
+from sqlalchemy.exc import IntegrityError
 from werkzeug.utils import secure_filename
 
 from platform_db import (
     AIJob,
     AuditLog,
+    KnowledgeAlias,
     LoginFailure,
+    KnowledgeNode,
+    KnowledgeNodeVersion,
+    KnowledgeRelation,
     PublishedKnowledge,
+    PublishedKnowledgeNode,
+    PublishedKnowledgeRelation,
     PublishedContent,
     ReviewItem,
     SessionLocal,
     UploadFile,
     User,
     KnowledgeDocument,
+    ensure_knowledge_graph_seed,
     ensure_published_knowledge_snapshots,
     init_database,
+    new_id,
     utcnow,
 )
 
@@ -32,6 +43,10 @@ admin_api = Blueprint("admin_api", __name__, url_prefix="/api/v1")
 UPLOAD_DIR = Path(__file__).resolve().parent.parent / "uploads"
 ALLOWED_EXTENSIONS = {".png", ".jpg", ".jpeg", ".webp", ".pdf", ".docx", ".txt", ".md"}
 LOGIN_COOLDOWN_START = 5
+KNOWLEDGE_NODE_TYPES = {"domain", "module", "topic", "concept", "skill"}
+KNOWLEDGE_TYPES = {"memory", "concept", "procedure", "design"}
+KNOWLEDGE_RELATION_TYPES = {"prerequisite", "related", "often_confused", "extends"}
+KNOWLEDGE_CODE_PATTERN = re.compile(r"^[A-Z][A-Z0-9-]{1,79}$")
 
 
 def _json_error(message, status):
@@ -65,6 +80,16 @@ def admin_required(view):
     @wraps(view)
     def wrapped(db, *args, **kwargs):
         if not request.current_user or request.current_user.role != "admin":
+            return _json_error("permission denied", 403)
+        return view(db, *args, **kwargs)
+
+    return wrapped
+
+
+def teacher_required(view):
+    @wraps(view)
+    def wrapped(db, *args, **kwargs):
+        if not request.current_user or request.current_user.role not in {"admin", "teacher"}:
             return _json_error("permission denied", 403)
         return view(db, *args, **kwargs)
 
@@ -566,6 +591,7 @@ def _knowledge_json(item):
     return {
         "id": item.id,
         "node_id": item.node_id,
+        "knowledge_node_id": item.knowledge_node_id,
         "title": item.title,
         "status": item.status,
         "version": item.version,
@@ -578,6 +604,7 @@ def _knowledge_json(item):
 def _published_knowledge_json(item):
     return {
         "node_id": item.node_id,
+        "knowledge_node_id": item.knowledge_node_id,
         "title": item.title,
         "version": item.version,
         "payload": item.payload,
@@ -618,15 +645,271 @@ def _valid_knowledge_payload(body):
     return {"title": title, "sections": normalized}, None
 
 
-@admin_api.get("/public/knowledge/<node_id>")
-def public_knowledge(node_id):
+def _knowledge_snapshot(node):
+    return {
+        "id": node.id,
+        "code": node.code,
+        "parent_id": node.parent_id,
+        "node_type": node.node_type,
+        "knowledge_type": node.knowledge_type,
+        "title": node.title,
+        "sort_order": node.sort_order,
+        "status": node.status,
+        "redirect_to_id": node.redirect_to_id,
+        "metadata": node.metadata_json or {},
+        "version": node.version,
+    }
+
+
+def _knowledge_node_json(node):
+    payload = _knowledge_snapshot(node)
+    payload.update(
+        {
+            "updated_at": node.updated_at.isoformat() if node.updated_at else None,
+            "published_at": node.published_at.isoformat() if node.published_at else None,
+        }
+    )
+    return payload
+
+
+def _published_node_json(node):
+    metadata = node.metadata_json or {}
+    return {
+        "id": node.node_id,
+        "code": node.code,
+        "name": node.title,
+        "title": node.title,
+        "parent_id": node.parent_id,
+        "node_type": node.node_type,
+        "knowledge_type": node.knowledge_type,
+        "sort_order": node.sort_order,
+        "redirect_to_id": node.redirect_to_id,
+        "metadata": metadata,
+        "difficulty": metadata.get("difficulty"),
+        "examFrequency": metadata.get("examFrequency"),
+        "expanded": bool(metadata.get("expanded")),
+        "version": node.version,
+        "published_at": node.published_at.isoformat() if node.published_at else None,
+    }
+
+
+def _relation_json(item):
+    return {
+        "id": item.id,
+        "source_node_id": item.source_node_id,
+        "target_node_id": item.target_node_id,
+        "relation_type": item.relation_type,
+        "weight": item.weight,
+        "status": item.status,
+        "version": item.version,
+        "updated_at": item.updated_at.isoformat() if item.updated_at else None,
+        "published_at": item.published_at.isoformat() if item.published_at else None,
+    }
+
+
+def _published_relation_json(item):
+    return {
+        "id": item.relation_id,
+        "source_node_id": item.source_node_id,
+        "target_node_id": item.target_node_id,
+        "relation_type": item.relation_type,
+        "weight": item.weight,
+        "version": item.version,
+    }
+
+
+def _resolve_knowledge_node(db, node_ref, follow_redirect=True):
+    item = db.scalar(
+        select(KnowledgeNode).where(
+            or_(KnowledgeNode.id == node_ref, KnowledgeNode.code == node_ref)
+        )
+    )
+    if not item:
+        alias = db.scalar(select(KnowledgeAlias).where(KnowledgeAlias.alias == node_ref))
+        if alias:
+            item = db.get(KnowledgeNode, alias.node_id)
+    visited = set()
+    while item and follow_redirect and item.redirect_to_id:
+        if item.id in visited:
+            return None
+        visited.add(item.id)
+        item = db.get(KnowledgeNode, item.redirect_to_id)
+    return item
+
+
+def _resolve_published_node(db, node_ref):
+    item = db.scalar(
+        select(PublishedKnowledgeNode).where(
+            or_(
+                PublishedKnowledgeNode.node_id == node_ref,
+                PublishedKnowledgeNode.code == node_ref,
+            )
+        )
+    )
+    if not item:
+        alias = db.scalar(select(KnowledgeAlias).where(KnowledgeAlias.alias == node_ref))
+        if alias:
+            item = db.get(PublishedKnowledgeNode, alias.node_id)
+    visited = set()
+    while item and item.redirect_to_id:
+        if item.node_id in visited:
+            return None
+        visited.add(item.node_id)
+        item = db.get(PublishedKnowledgeNode, item.redirect_to_id)
+    return item
+
+
+def _knowledge_document_for_node(db, node):
+    return db.scalar(
+        select(KnowledgeDocument).where(
+            or_(
+                KnowledgeDocument.knowledge_node_id == node.id,
+                KnowledgeDocument.node_id == node.code,
+            )
+        )
+    )
+
+
+def _published_document_for_node(db, node):
+    return db.scalar(
+        select(PublishedKnowledge).where(
+            or_(
+                PublishedKnowledge.knowledge_node_id == node.node_id,
+                PublishedKnowledge.node_id == node.code,
+            )
+        )
+    )
+
+
+def _valid_node_metadata(value):
+    if value is None:
+        return {}
+    if not isinstance(value, dict):
+        return None
+    try:
+        if len(json.dumps(value, ensure_ascii=False)) > 20000:
+            return None
+    except (TypeError, ValueError):
+        return None
+    difficulty = value.get("difficulty")
+    if difficulty is not None:
+        if (
+            not isinstance(difficulty, list)
+            or len(difficulty) != 2
+            or any(not isinstance(item, int) or item < 1 or item > 5 for item in difficulty)
+            or difficulty[0] > difficulty[1]
+        ):
+            return None
+    frequency = value.get("examFrequency")
+    if frequency is not None and frequency not in {"high", "medium", "low"}:
+        return None
+    return value
+
+
+def _would_create_knowledge_cycle(db, node_id, parent_id):
+    current_id = parent_id
+    visited = set()
+    while current_id:
+        if current_id == node_id or current_id in visited:
+            return True
+        visited.add(current_id)
+        parent = db.get(KnowledgeNode, current_id)
+        current_id = parent.parent_id if parent else None
+    return False
+
+
+def _add_knowledge_version(db, node, actor_id, reason):
+    db.add(
+        KnowledgeNodeVersion(
+            node_id=node.id,
+            version=node.version,
+            snapshot=_knowledge_snapshot(node),
+            change_reason=reason[:240],
+            created_by=actor_id,
+        )
+    )
+
+
+def _publish_node_snapshot(db, node, actor_id):
+    snapshot = db.get(PublishedKnowledgeNode, node.id)
+    if not snapshot:
+        snapshot = PublishedKnowledgeNode(node_id=node.id)
+        db.add(snapshot)
+    snapshot.code = node.code
+    snapshot.parent_id = node.parent_id
+    snapshot.node_type = node.node_type
+    snapshot.knowledge_type = node.knowledge_type
+    snapshot.title = node.title
+    snapshot.sort_order = node.sort_order
+    snapshot.redirect_to_id = node.redirect_to_id
+    snapshot.metadata_json = node.metadata_json or {}
+    snapshot.version = node.version
+    snapshot.published_by = actor_id
+    snapshot.published_at = utcnow()
+    return snapshot
+
+
+def _public_knowledge_tree(db):
+    rows = db.scalars(
+        select(PublishedKnowledgeNode)
+        .where(PublishedKnowledgeNode.redirect_to_id.is_(None))
+        .order_by(PublishedKnowledgeNode.sort_order, PublishedKnowledgeNode.code)
+    ).all()
+    items = {row.node_id: {**_published_node_json(row), "children": []} for row in rows}
+    roots = []
+    for row in rows:
+        item = items[row.node_id]
+        parent = items.get(row.parent_id)
+        if parent:
+            parent["children"].append(item)
+        else:
+            roots.append(item)
+    return roots, rows
+
+
+@admin_api.get("/public/knowledge-tree")
+def public_knowledge_tree():
     db = SessionLocal()
     try:
-        item = db.get(PublishedKnowledge, node_id)
+        tree, rows = _public_knowledge_tree(db)
+        relations = db.scalars(
+            select(PublishedKnowledgeRelation).order_by(
+                PublishedKnowledgeRelation.relation_type,
+                PublishedKnowledgeRelation.relation_id,
+            )
+        ).all()
+        response = jsonify(
+            {
+                "items": tree,
+                "relations": [_published_relation_json(item) for item in relations],
+                "node_count": len(rows),
+            }
+        )
+        version_sum = sum(item.version for item in rows) + sum(item.version for item in relations)
+        response.set_etag(f"knowledge-tree-{len(rows)}-{len(relations)}-{version_sum}")
+        response.cache_control.public = True
+        response.cache_control.max_age = 0
+        response.cache_control.must_revalidate = True
+        return response.make_conditional(request)
+    finally:
+        SessionLocal.remove()
+
+
+@admin_api.get("/public/knowledge/<node_ref>")
+def public_knowledge(node_ref):
+    db = SessionLocal()
+    try:
+        node = _resolve_published_node(db, node_ref)
+        if not node:
+            return _json_error("knowledge node not found", 404)
+        item = _published_document_for_node(db, node)
         if not item:
             return _json_error("knowledge document not found", 404)
-        response = jsonify({"knowledge": _published_knowledge_json(item)})
-        response.set_etag(f"knowledge-{item.node_id}-v{item.version}")
+        payload = _published_knowledge_json(item)
+        payload["knowledge_node_id"] = node.node_id
+        payload["code"] = node.code
+        response = jsonify({"knowledge": payload})
+        response.set_etag(f"knowledge-{node.node_id}-v{item.version}")
         response.cache_control.public = True
         response.cache_control.max_age = 0
         response.cache_control.must_revalidate = True
@@ -645,8 +928,515 @@ def public_knowledge_list():
         SessionLocal.remove()
 
 
+@admin_api.get("/admin/knowledge/nodes")
+@login_required
+@teacher_required
+def admin_knowledge_nodes(db):
+    rows = db.scalars(
+        select(KnowledgeNode).order_by(
+            KnowledgeNode.parent_id,
+            KnowledgeNode.sort_order,
+            KnowledgeNode.code,
+        )
+    ).all()
+    documents = {
+        item.knowledge_node_id or item.node_id: item.status
+        for item in db.scalars(select(KnowledgeDocument)).all()
+    }
+    items = []
+    for row in rows:
+        payload = _knowledge_node_json(row)
+        payload["document_status"] = documents.get(row.id, documents.get(row.code))
+        items.append(payload)
+    return jsonify({"items": items})
+
+
+@admin_api.post("/admin/knowledge/nodes")
+@login_required
+@teacher_required
+@csrf_required
+def create_knowledge_node(db):
+    body = request.get_json(silent=True) or {}
+    title = str(body.get("title", "")).strip()[:160]
+    if not title:
+        return _json_error("title is required", 400)
+
+    internal_id = new_id("kn")
+    requested_code = str(body.get("code", "")).strip().upper()
+    code = requested_code or f"KN-{internal_id[-8:].upper()}"
+    if not KNOWLEDGE_CODE_PATTERN.fullmatch(code):
+        return _json_error("code must use uppercase letters, numbers, and hyphens", 400)
+    if db.scalar(select(KnowledgeNode).where(KnowledgeNode.code == code)):
+        return _json_error("knowledge code already exists", 409)
+    if db.scalar(select(KnowledgeAlias).where(KnowledgeAlias.alias == code)):
+        return _json_error("knowledge code is reserved by an alias", 409)
+
+    node_type = str(body.get("node_type", "concept")).strip()
+    knowledge_type = str(body.get("knowledge_type", "concept")).strip()
+    if node_type not in KNOWLEDGE_NODE_TYPES:
+        return _json_error("invalid node type", 400)
+    if knowledge_type not in KNOWLEDGE_TYPES:
+        return _json_error("invalid knowledge type", 400)
+
+    parent = None
+    parent_ref = body.get("parent_id")
+    if parent_ref:
+        parent = _resolve_knowledge_node(db, str(parent_ref))
+        if not parent or parent.status in {"archived", "merged"}:
+            return _json_error("parent node not found", 404)
+
+    metadata = _valid_node_metadata(body.get("metadata"))
+    if metadata is None:
+        return _json_error("invalid knowledge metadata", 400)
+
+    sort_order = body.get("sort_order")
+    if sort_order is None:
+        sibling_query = select(func.max(KnowledgeNode.sort_order))
+        sibling_query = (
+            sibling_query.where(KnowledgeNode.parent_id == parent.id)
+            if parent
+            else sibling_query.where(KnowledgeNode.parent_id.is_(None))
+        )
+        highest = db.scalar(sibling_query)
+        sort_order = (highest if highest is not None else -1) + 1
+    if not isinstance(sort_order, int) or sort_order < 0:
+        return _json_error("sort_order must be a non-negative integer", 400)
+
+    node = KnowledgeNode(
+        id=internal_id,
+        code=code,
+        parent_id=parent.id if parent else None,
+        node_type=node_type,
+        knowledge_type=knowledge_type,
+        title=title,
+        sort_order=sort_order,
+        status="draft",
+        metadata_json=metadata,
+        version=1,
+        created_by=request.current_user.id,
+        updated_by=request.current_user.id,
+    )
+    db.add(node)
+    db.add(
+        KnowledgeAlias(
+            alias=code,
+            alias_type="code",
+            node_id=node.id,
+            created_by=request.current_user.id,
+        )
+    )
+    _add_knowledge_version(db, node, request.current_user.id, "创建知识节点")
+    _audit(db, request.current_user, "knowledge_node.create", "knowledge_node", node.id, {"code": code})
+    try:
+        db.commit()
+    except IntegrityError:
+        db.rollback()
+        return _json_error("knowledge node conflicts with an existing record", 409)
+    return jsonify({"node": _knowledge_node_json(node)}), 201
+
+
+@admin_api.patch("/admin/knowledge/nodes/<node_ref>")
+@login_required
+@teacher_required
+@csrf_required
+def update_knowledge_node(db, node_ref):
+    node = _resolve_knowledge_node(db, node_ref, follow_redirect=False)
+    if not node:
+        return _json_error("knowledge node not found", 404)
+    if node.status in {"archived", "merged"}:
+        return _json_error("archived or merged nodes cannot be edited", 409)
+
+    body = request.get_json(silent=True) or {}
+    expected_version = body.get("version")
+    if not isinstance(expected_version, int):
+        return _json_error("version is required", 400)
+    if expected_version != node.version:
+        return jsonify({"error": "version conflict", "current_version": node.version}), 409
+
+    changed = False
+    if "title" in body:
+        title = str(body.get("title", "")).strip()[:160]
+        if not title:
+            return _json_error("title is required", 400)
+        if title != node.title:
+            node.title = title
+            changed = True
+    if "node_type" in body:
+        node_type = str(body.get("node_type", "")).strip()
+        if node_type not in KNOWLEDGE_NODE_TYPES:
+            return _json_error("invalid node type", 400)
+        if node_type != node.node_type:
+            node.node_type = node_type
+            changed = True
+    if "knowledge_type" in body:
+        knowledge_type = str(body.get("knowledge_type", "")).strip()
+        if knowledge_type not in KNOWLEDGE_TYPES:
+            return _json_error("invalid knowledge type", 400)
+        if knowledge_type != node.knowledge_type:
+            node.knowledge_type = knowledge_type
+            changed = True
+    if "metadata" in body:
+        metadata = _valid_node_metadata(body.get("metadata"))
+        if metadata is None:
+            return _json_error("invalid knowledge metadata", 400)
+        if metadata != (node.metadata_json or {}):
+            node.metadata_json = metadata
+            changed = True
+    if "sort_order" in body:
+        sort_order = body.get("sort_order")
+        if not isinstance(sort_order, int) or sort_order < 0:
+            return _json_error("sort_order must be a non-negative integer", 400)
+        if sort_order != node.sort_order:
+            node.sort_order = sort_order
+            changed = True
+    if "parent_id" in body:
+        parent_ref = body.get("parent_id")
+        parent = _resolve_knowledge_node(db, str(parent_ref)) if parent_ref else None
+        if parent_ref and (not parent or parent.status in {"archived", "merged"}):
+            return _json_error("parent node not found", 404)
+        parent_id = parent.id if parent else None
+        if _would_create_knowledge_cycle(db, node.id, parent_id):
+            return _json_error("knowledge hierarchy cannot contain a cycle", 409)
+        if parent_id != node.parent_id:
+            node.parent_id = parent_id
+            changed = True
+
+    if not changed:
+        return jsonify({"node": _knowledge_node_json(node)})
+
+    node.version += 1
+    node.status = "draft"
+    node.updated_by = request.current_user.id
+    reason = str(body.get("change_reason", "更新知识节点")).strip() or "更新知识节点"
+    _add_knowledge_version(db, node, request.current_user.id, reason)
+    _audit(
+        db,
+        request.current_user,
+        "knowledge_node.update",
+        "knowledge_node",
+        node.id,
+        {"version": node.version},
+    )
+    db.commit()
+    return jsonify({"node": _knowledge_node_json(node)})
+
+
+@admin_api.post("/admin/knowledge/nodes/<node_ref>/publish")
+@login_required
+@teacher_required
+@csrf_required
+def publish_knowledge_node(db, node_ref):
+    node = _resolve_knowledge_node(db, node_ref, follow_redirect=False)
+    if not node:
+        return _json_error("knowledge node not found", 404)
+    if node.status in {"archived", "merged"}:
+        return _json_error("archived or merged nodes cannot be published", 409)
+    body = request.get_json(silent=True) or {}
+    expected_version = body.get("version")
+    if expected_version is not None and expected_version != node.version:
+        return jsonify({"error": "version conflict", "current_version": node.version}), 409
+    if node.parent_id and not db.get(PublishedKnowledgeNode, node.parent_id):
+        return _json_error("publish the parent node first", 409)
+
+    node.status = "published"
+    node.published_by = request.current_user.id
+    node.published_at = utcnow()
+    node.updated_by = request.current_user.id
+    _publish_node_snapshot(db, node, request.current_user.id)
+    _audit(
+        db,
+        request.current_user,
+        "knowledge_node.publish",
+        "knowledge_node",
+        node.id,
+        {"version": node.version},
+    )
+    db.commit()
+    return jsonify({"node": _knowledge_node_json(node)})
+
+
+@admin_api.post("/admin/knowledge/nodes/<node_ref>/archive")
+@login_required
+@teacher_required
+@csrf_required
+def archive_knowledge_node(db, node_ref):
+    node = _resolve_knowledge_node(db, node_ref, follow_redirect=False)
+    if not node:
+        return _json_error("knowledge node not found", 404)
+    body = request.get_json(silent=True) or {}
+    if body.get("version") != node.version:
+        return jsonify({"error": "version conflict", "current_version": node.version}), 409
+    child = db.scalar(
+        select(KnowledgeNode).where(
+            KnowledgeNode.parent_id == node.id,
+            KnowledgeNode.status.notin_({"archived", "merged"}),
+        )
+    )
+    if child:
+        return _json_error("archive or move child nodes first", 409)
+
+    node.status = "archived"
+    node.version += 1
+    node.updated_by = request.current_user.id
+    _add_knowledge_version(db, node, request.current_user.id, "归档知识节点")
+    snapshot = db.get(PublishedKnowledgeNode, node.id)
+    if snapshot:
+        db.delete(snapshot)
+    _audit(db, request.current_user, "knowledge_node.archive", "knowledge_node", node.id)
+    db.commit()
+    return jsonify({"node": _knowledge_node_json(node)})
+
+
+@admin_api.post("/admin/knowledge/nodes/<node_ref>/merge")
+@login_required
+@teacher_required
+@csrf_required
+def merge_knowledge_node(db, node_ref):
+    source = _resolve_knowledge_node(db, node_ref, follow_redirect=False)
+    body = request.get_json(silent=True) or {}
+    target = _resolve_knowledge_node(db, str(body.get("target_id", "")))
+    if not source or not target:
+        return _json_error("source or target node not found", 404)
+    if source.id == target.id:
+        return _json_error("a node cannot be merged into itself", 409)
+    if body.get("version") != source.version:
+        return jsonify({"error": "version conflict", "current_version": source.version}), 409
+    if source.status in {"archived", "merged"} or target.status != "published":
+        return _json_error("source must be active and target must be published", 409)
+    child = db.scalar(
+        select(KnowledgeNode).where(
+            KnowledgeNode.parent_id == source.id,
+            KnowledgeNode.status.notin_({"archived", "merged"}),
+        )
+    )
+    if child:
+        return _json_error("move or merge child nodes first", 409)
+    relation = db.scalar(
+        select(KnowledgeRelation).where(
+            or_(
+                KnowledgeRelation.source_node_id == source.id,
+                KnowledgeRelation.target_node_id == source.id,
+            ),
+            KnowledgeRelation.status != "archived",
+        )
+    )
+    if relation:
+        return _json_error("remove or migrate relations before merging", 409)
+
+    source_document = _knowledge_document_for_node(db, source)
+    target_document = _knowledge_document_for_node(db, target)
+    source_published = db.scalar(
+        select(PublishedKnowledge).where(
+            or_(
+                PublishedKnowledge.knowledge_node_id == source.id,
+                PublishedKnowledge.node_id == source.code,
+            )
+        )
+    )
+    target_snapshot = db.get(PublishedKnowledgeNode, target.id)
+    target_published = _published_document_for_node(db, target_snapshot) if target_snapshot else None
+    if source_document and target_document:
+        return _json_error("both nodes have editable content; merge the content first", 409)
+    if source_published and target_published:
+        return _json_error("both nodes have published content; merge the content first", 409)
+    if source_document:
+        source_document.knowledge_node_id = target.id
+        source_document.node_id = target.code
+    if source_published:
+        source_published.knowledge_node_id = target.id
+        source_published.node_id = target.code
+
+    source.status = "merged"
+    source.redirect_to_id = target.id
+    source.version += 1
+    source.updated_by = request.current_user.id
+    _add_knowledge_version(db, source, request.current_user.id, f"合并到 {target.code}")
+    _publish_node_snapshot(db, source, request.current_user.id)
+    _audit(
+        db,
+        request.current_user,
+        "knowledge_node.merge",
+        "knowledge_node",
+        source.id,
+        {"target_id": target.id},
+    )
+    db.commit()
+    return jsonify(
+        {
+            "node": _knowledge_node_json(source),
+            "redirect_to": _knowledge_node_json(target),
+        }
+    )
+
+
+@admin_api.get("/admin/knowledge/relations")
+@login_required
+@teacher_required
+def admin_knowledge_relations(db):
+    rows = db.scalars(
+        select(KnowledgeRelation).order_by(
+            KnowledgeRelation.relation_type,
+            KnowledgeRelation.created_at,
+        )
+    ).all()
+    return jsonify({"items": [_relation_json(item) for item in rows]})
+
+
+@admin_api.post("/admin/knowledge/relations")
+@login_required
+@teacher_required
+@csrf_required
+def create_knowledge_relation(db):
+    body = request.get_json(silent=True) or {}
+    source = _resolve_knowledge_node(db, str(body.get("source_node_id", "")))
+    target = _resolve_knowledge_node(db, str(body.get("target_node_id", "")))
+    relation_type = str(body.get("relation_type", "")).strip()
+    weight = body.get("weight", 100)
+    if not source or not target:
+        return _json_error("source or target node not found", 404)
+    if source.id == target.id:
+        return _json_error("a node cannot relate to itself", 409)
+    if relation_type not in KNOWLEDGE_RELATION_TYPES:
+        return _json_error("invalid relation type", 400)
+    if not isinstance(weight, int) or weight < 1 or weight > 100:
+        return _json_error("weight must be between 1 and 100", 400)
+    item = KnowledgeRelation(
+        source_node_id=source.id,
+        target_node_id=target.id,
+        relation_type=relation_type,
+        weight=weight,
+        status="draft",
+        created_by=request.current_user.id,
+        updated_by=request.current_user.id,
+    )
+    db.add(item)
+    _audit(db, request.current_user, "knowledge_relation.create", "knowledge_relation", item.id)
+    try:
+        db.commit()
+    except IntegrityError:
+        db.rollback()
+        return _json_error("knowledge relation already exists", 409)
+    return jsonify({"relation": _relation_json(item)}), 201
+
+
+@admin_api.post("/admin/knowledge/relations/<relation_id>/publish")
+@login_required
+@teacher_required
+@csrf_required
+def publish_knowledge_relation(db, relation_id):
+    item = db.get(KnowledgeRelation, relation_id)
+    if not item:
+        return _json_error("knowledge relation not found", 404)
+    body = request.get_json(silent=True) or {}
+    if body.get("version") is not None and body.get("version") != item.version:
+        return jsonify({"error": "version conflict", "current_version": item.version}), 409
+    if not db.get(PublishedKnowledgeNode, item.source_node_id) or not db.get(
+        PublishedKnowledgeNode, item.target_node_id
+    ):
+        return _json_error("publish both relation nodes first", 409)
+    item.status = "published"
+    item.published_by = request.current_user.id
+    item.published_at = utcnow()
+    item.updated_by = request.current_user.id
+    snapshot = db.get(PublishedKnowledgeRelation, item.id)
+    if not snapshot:
+        snapshot = PublishedKnowledgeRelation(relation_id=item.id)
+        db.add(snapshot)
+    snapshot.source_node_id = item.source_node_id
+    snapshot.target_node_id = item.target_node_id
+    snapshot.relation_type = item.relation_type
+    snapshot.weight = item.weight
+    snapshot.version = item.version
+    snapshot.published_by = request.current_user.id
+    snapshot.published_at = item.published_at
+    _audit(db, request.current_user, "knowledge_relation.publish", "knowledge_relation", item.id)
+    db.commit()
+    return jsonify({"relation": _relation_json(item)})
+
+
+@admin_api.patch("/admin/knowledge/relations/<relation_id>")
+@login_required
+@teacher_required
+@csrf_required
+def update_knowledge_relation(db, relation_id):
+    item = db.get(KnowledgeRelation, relation_id)
+    if not item:
+        return _json_error("knowledge relation not found", 404)
+    if item.status == "archived":
+        return _json_error("archived relations cannot be edited", 409)
+    body = request.get_json(silent=True) or {}
+    if body.get("version") != item.version:
+        return jsonify({"error": "version conflict", "current_version": item.version}), 409
+
+    source = (
+        _resolve_knowledge_node(db, str(body["source_node_id"]))
+        if "source_node_id" in body
+        else db.get(KnowledgeNode, item.source_node_id)
+    )
+    target = (
+        _resolve_knowledge_node(db, str(body["target_node_id"]))
+        if "target_node_id" in body
+        else db.get(KnowledgeNode, item.target_node_id)
+    )
+    relation_type = str(body.get("relation_type", item.relation_type)).strip()
+    weight = body.get("weight", item.weight)
+    if not source or not target:
+        return _json_error("source or target node not found", 404)
+    if source.id == target.id:
+        return _json_error("a node cannot relate to itself", 409)
+    if relation_type not in KNOWLEDGE_RELATION_TYPES:
+        return _json_error("invalid relation type", 400)
+    if not isinstance(weight, int) or weight < 1 or weight > 100:
+        return _json_error("weight must be between 1 and 100", 400)
+
+    item.source_node_id = source.id
+    item.target_node_id = target.id
+    item.relation_type = relation_type
+    item.weight = weight
+    item.version += 1
+    item.status = "draft"
+    item.updated_by = request.current_user.id
+    _audit(
+        db,
+        request.current_user,
+        "knowledge_relation.update",
+        "knowledge_relation",
+        item.id,
+        {"version": item.version},
+    )
+    try:
+        db.commit()
+    except IntegrityError:
+        db.rollback()
+        return _json_error("knowledge relation already exists", 409)
+    return jsonify({"relation": _relation_json(item)})
+
+
+@admin_api.post("/admin/knowledge/relations/<relation_id>/archive")
+@login_required
+@teacher_required
+@csrf_required
+def archive_knowledge_relation(db, relation_id):
+    item = db.get(KnowledgeRelation, relation_id)
+    if not item:
+        return _json_error("knowledge relation not found", 404)
+    body = request.get_json(silent=True) or {}
+    if body.get("version") != item.version:
+        return jsonify({"error": "version conflict", "current_version": item.version}), 409
+    item.status = "archived"
+    item.version += 1
+    item.updated_by = request.current_user.id
+    snapshot = db.get(PublishedKnowledgeRelation, item.id)
+    if snapshot:
+        db.delete(snapshot)
+    _audit(db, request.current_user, "knowledge_relation.archive", "knowledge_relation", item.id)
+    db.commit()
+    return jsonify({"relation": _relation_json(item)})
+
+
 @admin_api.get("/admin/knowledge")
 @login_required
+@teacher_required
 def admin_knowledge_list(db):
     rows = db.scalars(select(KnowledgeDocument).order_by(KnowledgeDocument.node_id)).all()
     return jsonify({"items": [_knowledge_json(row) for row in rows]})
@@ -654,15 +1444,20 @@ def admin_knowledge_list(db):
 
 @admin_api.put("/admin/knowledge/<node_id>")
 @login_required
+@teacher_required
 @csrf_required
 def save_knowledge(db, node_id):
     payload, error = _valid_knowledge_payload(request.get_json(silent=True) or {})
     if error:
         return _json_error(error, 400)
-    item = db.scalar(select(KnowledgeDocument).where(KnowledgeDocument.node_id == node_id))
+    node = _resolve_knowledge_node(db, node_id)
+    if not node or node.status in {"archived", "merged"}:
+        return _json_error("knowledge node not found", 404)
+    item = _knowledge_document_for_node(db, node)
     if not item:
         item = KnowledgeDocument(
-            node_id=node_id,
+            node_id=node.code,
+            knowledge_node_id=node.id,
             title=payload["title"],
             payload=payload,
             status="draft",
@@ -674,36 +1469,42 @@ def save_knowledge(db, node_id):
         if item.status == "pending_review":
             return _json_error("pending document must be reviewed before editing", 409)
         item.title = payload["title"]
+        item.node_id = node.code
+        item.knowledge_node_id = node.id
         item.payload = payload
         item.version += 1
         item.status = "draft"
         item.updated_by = request.current_user.id
-    _audit(db, request.current_user, "knowledge.save", "knowledge", node_id, {"version": item.version})
+    _audit(db, request.current_user, "knowledge.save", "knowledge", node.id, {"version": item.version})
     db.commit()
     return jsonify({"knowledge": _knowledge_json(item)})
 
 
 @admin_api.post("/admin/knowledge/<node_id>/submit")
 @login_required
+@teacher_required
 @csrf_required
 def submit_knowledge(db, node_id):
-    item = db.scalar(select(KnowledgeDocument).where(KnowledgeDocument.node_id == node_id))
+    node = _resolve_knowledge_node(db, node_id)
+    item = _knowledge_document_for_node(db, node) if node else None
     if not item:
         return _json_error("knowledge document not found", 404)
     if item.status not in {"draft", "rejected"}:
         return _json_error("only draft or rejected documents can be submitted", 409)
     item.status = "pending_review"
     item.updated_by = request.current_user.id
-    _audit(db, request.current_user, "knowledge.submit", "knowledge", node_id)
+    _audit(db, request.current_user, "knowledge.submit", "knowledge", node.id)
     db.commit()
     return jsonify({"knowledge": _knowledge_json(item)})
 
 
 @admin_api.post("/admin/knowledge/<node_id>/publish")
 @login_required
+@teacher_required
 @csrf_required
 def publish_knowledge(db, node_id):
-    item = db.scalar(select(KnowledgeDocument).where(KnowledgeDocument.node_id == node_id))
+    node = _resolve_knowledge_node(db, node_id)
+    item = _knowledge_document_for_node(db, node) if node else None
     if not item:
         return _json_error("knowledge document not found", 404)
     if item.status not in {"pending_review", "draft"}:
@@ -712,16 +1513,25 @@ def publish_knowledge(db, node_id):
     item.published_by = request.current_user.id
     item.published_at = utcnow()
     item.updated_by = request.current_user.id
-    snapshot = db.get(PublishedKnowledge, node_id)
+    snapshot = db.scalar(
+        select(PublishedKnowledge).where(
+            or_(
+                PublishedKnowledge.knowledge_node_id == node.id,
+                PublishedKnowledge.node_id == node.code,
+            )
+        )
+    )
     if not snapshot:
-        snapshot = PublishedKnowledge(node_id=node_id)
+        snapshot = PublishedKnowledge(node_id=node.code, knowledge_node_id=node.id)
         db.add(snapshot)
+    snapshot.node_id = node.code
+    snapshot.knowledge_node_id = node.id
     snapshot.title = item.title
     snapshot.version = item.version
     snapshot.payload = item.payload
     snapshot.published_by = request.current_user.id
     snapshot.published_at = item.published_at
-    _audit(db, request.current_user, "knowledge.publish", "knowledge", node_id, {"version": item.version})
+    _audit(db, request.current_user, "knowledge.publish", "knowledge", node.id, {"version": item.version})
     db.commit()
     return jsonify({"knowledge": _knowledge_json(item)})
 
@@ -820,6 +1630,7 @@ def configure_platform(app):
         raise RuntimeError("SHUXUE_SESSION_SECRET must be configured")
     if environment == "production" and len(session_secret) < 32:
         raise RuntimeError("SHUXUE_SESSION_SECRET must contain at least 32 characters in production")
+    ensure_knowledge_graph_seed()
     ensure_published_knowledge_snapshots()
 
     app.config.update(

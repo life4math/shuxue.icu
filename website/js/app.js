@@ -219,8 +219,12 @@ document.getElementById('question-modal').addEventListener('click', (e) => {
 });
 
 // ===== 知识点体系 =====
+let publishedKnowledgeTreeLoaded = false;
+let publishedKnowledgeTreeLoading = null;
+
 function initKnowledge() {
   renderKnowledgeExperience();
+  loadPublishedKnowledgeTree();
   if (!window._knowledgeBound) {
     document.getElementById('knowledge-search-input').addEventListener('input', debounce(event => {
       renderKnowledgeExperience(event.target.value.trim());
@@ -231,6 +235,57 @@ function initKnowledge() {
     });
     window._knowledgeBound = true;
   }
+}
+
+async function loadPublishedKnowledgeTree() {
+  if (publishedKnowledgeTreeLoaded) return;
+  if (publishedKnowledgeTreeLoading) return publishedKnowledgeTreeLoading;
+  publishedKnowledgeTreeLoading = fetch('/api/v1/public/knowledge-tree', {
+    headers: { Accept: 'application/json' },
+    credentials: 'same-origin',
+    cache: 'no-cache'
+  })
+    .then(response => {
+      if (!response.ok) throw new Error(`knowledge tree API returned ${response.status}`);
+      return response.json();
+    })
+    .then(data => {
+      if (!data || !Array.isArray(data.items) || !data.items.length) {
+        throw new Error('knowledge tree API returned an empty tree');
+      }
+      const dynamicTree = data.items.map(normalizePublishedKnowledgeNode);
+      knowledgeTree.splice(0, knowledgeTree.length, ...dynamicTree);
+      publishedKnowledgeTreeLoaded = true;
+      const search = document.getElementById('knowledge-search-input');
+      renderKnowledgeExperience(search ? search.value.trim() : '');
+    })
+    .catch(error => {
+      console.warn('正式知识树暂不可用，继续使用随站点发布的应急快照。', error);
+    })
+    .finally(() => {
+      publishedKnowledgeTreeLoading = null;
+    });
+  return publishedKnowledgeTreeLoading;
+}
+
+function normalizePublishedKnowledgeNode(item) {
+  const metadata = item && item.metadata && typeof item.metadata === 'object' ? item.metadata : {};
+  const normalized = {
+    id: String(item.code || item.id),
+    internalId: String(item.id || ''),
+    name: String(item.title || item.name || item.code || ''),
+    level: Number(metadata.level || 1),
+    difficulty: Array.isArray(item.difficulty) ? item.difficulty : metadata.difficulty,
+    examFrequency: item.examFrequency || metadata.examFrequency || null,
+    expanded: Boolean(item.expanded || metadata.expanded),
+    nodeType: item.node_type || 'concept',
+    knowledgeType: item.knowledge_type || 'concept',
+    version: Number(item.version || 1)
+  };
+  if (Array.isArray(item.children) && item.children.length) {
+    normalized.children = item.children.map(normalizePublishedKnowledgeNode);
+  }
+  return normalized;
 }
 
 function renderKnowledgeExperience(query = '') {

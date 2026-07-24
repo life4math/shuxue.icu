@@ -2,6 +2,8 @@
 """校验公开前端的 HTML 结构与本地资源引用。"""
 
 import sys
+import re
+from collections import Counter
 from html.parser import HTMLParser
 from pathlib import Path
 from urllib.parse import urlsplit
@@ -22,12 +24,17 @@ class ResourceParser(HTMLParser):
         super().__init__(convert_charrefs=True)
         self.source = source
         self.resources = []
+        self.ids = []
 
     def handle_starttag(self, tag, attrs):
+        attributes = dict(attrs)
+        element_id = attributes.get("id")
+        if element_id:
+            self.ids.append(element_id)
         attr_name = RESOURCE_ATTRIBUTES.get(tag)
         if not attr_name:
             return
-        value = dict(attrs).get(attr_name)
+        value = attributes.get(attr_name)
         if value:
             self.resources.append((tag, value))
 
@@ -61,6 +68,12 @@ def main():
             errors.append(f"{source.relative_to(ROOT)}: HTML 无法解析: {exc}")
             continue
 
+        duplicate_ids = [item for item, count in Counter(parser.ids).items() if count > 1]
+        for element_id in duplicate_ids:
+            errors.append(
+                f"{source.relative_to(ROOT)}: id 重复: {element_id}"
+            )
+
         for tag, reference in parser.resources:
             target = local_target(source, reference)
             if target is None:
@@ -75,6 +88,20 @@ def main():
             if not target.is_file():
                 errors.append(
                     f"{source.relative_to(ROOT)}: <{tag}> 本地资源不存在: {reference}"
+                )
+
+        if source.name == "admin.html":
+            admin_js = WEBSITE / "js" / "admin.js"
+            referenced_ids = set(
+                re.findall(
+                    r"""document\.getElementById\(\s*['"]([^'"]+)['"]\s*\)""",
+                    admin_js.read_text("utf-8"),
+                )
+            )
+            missing_ids = sorted(referenced_ids - set(parser.ids))
+            for element_id in missing_ids:
+                errors.append(
+                    f"{source.relative_to(ROOT)}: admin.js 引用了不存在的 id: {element_id}"
                 )
 
     if errors:

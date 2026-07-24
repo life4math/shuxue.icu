@@ -5,7 +5,17 @@ import uuid
 from datetime import datetime, timezone
 from typing import Optional
 
-from sqlalchemy import Boolean, DateTime, ForeignKey, Integer, JSON, String, Text, create_engine
+from sqlalchemy import (
+    Boolean,
+    DateTime,
+    ForeignKey,
+    Integer,
+    JSON,
+    String,
+    Text,
+    UniqueConstraint,
+    create_engine,
+)
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship, scoped_session, sessionmaker
 from werkzeug.security import check_password_hash, generate_password_hash
 
@@ -121,13 +131,135 @@ class PublishedContent(Base):
     updated_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow, onupdate=utcnow)
 
 
+class KnowledgeNode(Base):
+    """知识图谱的可编辑节点；移动节点不会改变永久 ID 或业务代码。"""
+
+    __tablename__ = "knowledge_nodes"
+
+    id: Mapped[str] = mapped_column(String(40), primary_key=True, default=lambda: new_id("kn"))
+    code: Mapped[str] = mapped_column(String(80), unique=True, index=True)
+    parent_id: Mapped[Optional[str]] = mapped_column(
+        ForeignKey("knowledge_nodes.id"), nullable=True, index=True
+    )
+    node_type: Mapped[str] = mapped_column(String(24), default="concept", index=True)
+    knowledge_type: Mapped[str] = mapped_column(String(24), default="concept", index=True)
+    title: Mapped[str] = mapped_column(String(160))
+    sort_order: Mapped[int] = mapped_column(Integer, default=0)
+    status: Mapped[str] = mapped_column(String(24), default="draft", index=True)
+    redirect_to_id: Mapped[Optional[str]] = mapped_column(
+        ForeignKey("knowledge_nodes.id"), nullable=True, index=True
+    )
+    metadata_json: Mapped[dict] = mapped_column("metadata", JSON, default=dict)
+    version: Mapped[int] = mapped_column(Integer, default=1)
+    created_by: Mapped[Optional[str]] = mapped_column(ForeignKey("users.id"), nullable=True)
+    updated_by: Mapped[Optional[str]] = mapped_column(ForeignKey("users.id"), nullable=True)
+    published_by: Mapped[Optional[str]] = mapped_column(ForeignKey("users.id"), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow, onupdate=utcnow)
+    published_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+
+
+class KnowledgeNodeVersion(Base):
+    """知识节点每次结构变更后的不可变版本快照。"""
+
+    __tablename__ = "knowledge_node_versions"
+    __table_args__ = (UniqueConstraint("node_id", "version", name="uq_knowledge_node_version"),)
+
+    id: Mapped[str] = mapped_column(String(40), primary_key=True, default=lambda: new_id("knv"))
+    node_id: Mapped[str] = mapped_column(ForeignKey("knowledge_nodes.id"), index=True)
+    version: Mapped[int] = mapped_column(Integer)
+    snapshot: Mapped[dict] = mapped_column(JSON)
+    change_reason: Mapped[str] = mapped_column(String(240), default="")
+    created_by: Mapped[Optional[str]] = mapped_column(ForeignKey("users.id"), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
+
+
+class KnowledgeAlias(Base):
+    """历史代码或旧名称到当前节点的解析入口。"""
+
+    __tablename__ = "knowledge_aliases"
+
+    id: Mapped[str] = mapped_column(String(40), primary_key=True, default=lambda: new_id("kna"))
+    alias: Mapped[str] = mapped_column(String(160), unique=True, index=True)
+    alias_type: Mapped[str] = mapped_column(String(24), default="legacy_code")
+    node_id: Mapped[str] = mapped_column(ForeignKey("knowledge_nodes.id"), index=True)
+    created_by: Mapped[Optional[str]] = mapped_column(ForeignKey("users.id"), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
+
+
+class KnowledgeRelation(Base):
+    """知识节点之间的先修、关联、易混淆和扩展关系。"""
+
+    __tablename__ = "knowledge_relations"
+    __table_args__ = (
+        UniqueConstraint(
+            "source_node_id",
+            "target_node_id",
+            "relation_type",
+            name="uq_knowledge_relation",
+        ),
+    )
+
+    id: Mapped[str] = mapped_column(String(40), primary_key=True, default=lambda: new_id("knr"))
+    source_node_id: Mapped[str] = mapped_column(ForeignKey("knowledge_nodes.id"), index=True)
+    target_node_id: Mapped[str] = mapped_column(ForeignKey("knowledge_nodes.id"), index=True)
+    relation_type: Mapped[str] = mapped_column(String(32), index=True)
+    weight: Mapped[int] = mapped_column(Integer, default=100)
+    status: Mapped[str] = mapped_column(String(24), default="draft", index=True)
+    version: Mapped[int] = mapped_column(Integer, default=1)
+    created_by: Mapped[Optional[str]] = mapped_column(ForeignKey("users.id"), nullable=True)
+    updated_by: Mapped[Optional[str]] = mapped_column(ForeignKey("users.id"), nullable=True)
+    published_by: Mapped[Optional[str]] = mapped_column(ForeignKey("users.id"), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow, onupdate=utcnow)
+    published_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+
+
+class PublishedKnowledgeNode(Base):
+    """公开知识树读取的节点发布快照。"""
+
+    __tablename__ = "published_knowledge_nodes"
+
+    node_id: Mapped[str] = mapped_column(String(40), primary_key=True)
+    code: Mapped[str] = mapped_column(String(80), unique=True, index=True)
+    parent_id: Mapped[Optional[str]] = mapped_column(String(40), nullable=True, index=True)
+    node_type: Mapped[str] = mapped_column(String(24))
+    knowledge_type: Mapped[str] = mapped_column(String(24))
+    title: Mapped[str] = mapped_column(String(160))
+    sort_order: Mapped[int] = mapped_column(Integer, default=0)
+    redirect_to_id: Mapped[Optional[str]] = mapped_column(String(40), nullable=True)
+    metadata_json: Mapped[dict] = mapped_column("metadata", JSON, default=dict)
+    version: Mapped[int] = mapped_column(Integer)
+    published_by: Mapped[Optional[str]] = mapped_column(ForeignKey("users.id"), nullable=True)
+    published_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow, onupdate=utcnow)
+
+
+class PublishedKnowledgeRelation(Base):
+    """公开知识图谱读取的关系发布快照。"""
+
+    __tablename__ = "published_knowledge_relations"
+
+    relation_id: Mapped[str] = mapped_column(String(40), primary_key=True)
+    source_node_id: Mapped[str] = mapped_column(String(40), index=True)
+    target_node_id: Mapped[str] = mapped_column(String(40), index=True)
+    relation_type: Mapped[str] = mapped_column(String(32), index=True)
+    weight: Mapped[int] = mapped_column(Integer, default=100)
+    version: Mapped[int] = mapped_column(Integer)
+    published_by: Mapped[Optional[str]] = mapped_column(ForeignKey("users.id"), nullable=True)
+    published_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
+
+
 class KnowledgeDocument(Base):
     """知识点的可编辑版本；正文结构保存在 payload JSON 中。"""
 
     __tablename__ = "knowledge_documents"
 
     id: Mapped[str] = mapped_column(String(40), primary_key=True, default=lambda: new_id("kdoc"))
-    node_id: Mapped[str] = mapped_column(String(40), unique=True, index=True)
+    node_id: Mapped[str] = mapped_column(String(80), unique=True, index=True)
+    knowledge_node_id: Mapped[Optional[str]] = mapped_column(
+        ForeignKey("knowledge_nodes.id"), nullable=True, unique=True, index=True
+    )
     title: Mapped[str] = mapped_column(String(160))
     status: Mapped[str] = mapped_column(String(24), default="draft", index=True)
     version: Mapped[int] = mapped_column(Integer, default=1)
@@ -145,7 +277,10 @@ class PublishedKnowledge(Base):
 
     __tablename__ = "published_knowledge"
 
-    node_id: Mapped[str] = mapped_column(String(40), primary_key=True)
+    node_id: Mapped[str] = mapped_column(String(80), primary_key=True)
+    knowledge_node_id: Mapped[Optional[str]] = mapped_column(
+        ForeignKey("knowledge_nodes.id"), nullable=True, unique=True, index=True
+    )
     title: Mapped[str] = mapped_column(String(160))
     version: Mapped[int] = mapped_column(Integer)
     payload: Mapped[dict] = mapped_column(JSON)
@@ -182,6 +317,88 @@ def init_database():
     Base.metadata.create_all(engine)
 
 
+def ensure_knowledge_graph_seed():
+    """仅在知识节点表为空时导入冻结目录，并补齐旧正文的内部 ID 关联。"""
+
+    from knowledge_catalog import legacy_catalog_nodes
+
+    db = SessionLocal()
+    try:
+        seeded = False
+        if db.query(KnowledgeNode).count() == 0:
+            now = utcnow()
+            for row in legacy_catalog_nodes():
+                node = KnowledgeNode(
+                    id=row["id"],
+                    code=row["code"],
+                    parent_id=row["parent_id"],
+                    node_type=row["node_type"],
+                    knowledge_type=row["knowledge_type"],
+                    title=row["title"],
+                    sort_order=row["sort_order"],
+                    status="published",
+                    metadata_json=row["metadata"],
+                    version=1,
+                    published_at=now,
+                )
+                db.add(node)
+                db.add(
+                    KnowledgeAlias(
+                        alias=row["code"],
+                        alias_type="legacy_code",
+                        node_id=row["id"],
+                    )
+                )
+                db.add(
+                    KnowledgeNodeVersion(
+                        node_id=row["id"],
+                        version=1,
+                        snapshot=row,
+                        change_reason="空数据库引导旧知识目录",
+                    )
+                )
+                db.add(
+                    PublishedKnowledgeNode(
+                        node_id=row["id"],
+                        code=row["code"],
+                        parent_id=row["parent_id"],
+                        node_type=row["node_type"],
+                        knowledge_type=row["knowledge_type"],
+                        title=row["title"],
+                        sort_order=row["sort_order"],
+                        metadata_json=row["metadata"],
+                        version=1,
+                        published_at=now,
+                    )
+                )
+            db.flush()
+            seeded = True
+
+        nodes_by_code = {
+            item.code: item.id
+            for item in db.query(KnowledgeNode).all()
+        }
+        changed = False
+        for item in db.query(KnowledgeDocument).filter(
+            KnowledgeDocument.knowledge_node_id.is_(None)
+        ):
+            internal_id = nodes_by_code.get(item.node_id)
+            if internal_id:
+                item.knowledge_node_id = internal_id
+                changed = True
+        for item in db.query(PublishedKnowledge).filter(
+            PublishedKnowledge.knowledge_node_id.is_(None)
+        ):
+            internal_id = nodes_by_code.get(item.node_id)
+            if internal_id:
+                item.knowledge_node_id = internal_id
+                changed = True
+        if changed or seeded:
+            db.commit()
+    finally:
+        SessionLocal.remove()
+
+
 def ensure_published_knowledge_snapshots():
     """首次升级时把旧的 published 文档回填为公开快照。"""
 
@@ -195,6 +412,7 @@ def ensure_published_knowledge_snapshots():
             db.add(
                 PublishedKnowledge(
                     node_id=item.node_id,
+                    knowledge_node_id=item.knowledge_node_id,
                     title=item.title,
                     version=item.version,
                     payload=item.payload,

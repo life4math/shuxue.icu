@@ -12,7 +12,16 @@ from pathlib import Path
 
 from sqlalchemy import select
 
-from platform_db import KnowledgeDocument, PublishedKnowledge, SessionLocal, User, init_database, utcnow
+from platform_db import (
+    KnowledgeDocument,
+    KnowledgeNode,
+    PublishedKnowledge,
+    SessionLocal,
+    User,
+    ensure_knowledge_graph_seed,
+    init_database,
+    utcnow,
+)
 
 
 SCRIPT_DIR = Path(__file__).resolve().parent
@@ -31,12 +40,17 @@ def seed_contents(db, user, contents, status="published", bootstrap_missing=Fals
     updated = 0
     skipped = 0
     for node_id, payload in contents.items():
+        node = db.scalar(select(KnowledgeNode).where(KnowledgeNode.code == node_id))
+        if not node:
+            skipped += 1
+            continue
         item = db.scalar(select(KnowledgeDocument).where(KnowledgeDocument.node_id == node_id))
         snapshot = db.get(PublishedKnowledge, node_id)
         if bootstrap_missing and item:
             if item.status == "published" and not snapshot:
                 snapshot = PublishedKnowledge(
                     node_id=node_id,
+                    knowledge_node_id=node.id,
                     title=item.title,
                     version=item.version,
                     payload=item.payload,
@@ -51,6 +65,7 @@ def seed_contents(db, user, contents, status="published", bootstrap_missing=Fals
 
         if item:
             item.title = payload["title"]
+            item.knowledge_node_id = node.id
             item.payload = payload
             item.status = status
             item.updated_by = user.id
@@ -61,6 +76,7 @@ def seed_contents(db, user, contents, status="published", bootstrap_missing=Fals
         else:
             item = KnowledgeDocument(
                 node_id=node_id,
+                knowledge_node_id=node.id,
                 title=payload["title"],
                 payload=payload,
                 status=status,
@@ -74,8 +90,9 @@ def seed_contents(db, user, contents, status="published", bootstrap_missing=Fals
             created += 1
         if status == "published":
             if not snapshot:
-                snapshot = PublishedKnowledge(node_id=node_id)
+                snapshot = PublishedKnowledge(node_id=node_id, knowledge_node_id=node.id)
                 db.add(snapshot)
+            snapshot.knowledge_node_id = node.id
             snapshot.title = payload["title"]
             snapshot.version = item.version or 1
             snapshot.payload = payload
@@ -96,6 +113,7 @@ def main():
     args = parser.parse_args()
 
     init_database()
+    ensure_knowledge_graph_seed()
     contents = read_static_content()
     db = SessionLocal()
     try:
