@@ -42,31 +42,45 @@ log() { echo -e "[deploy] $*"; }
 cd "$PROJECT_DIR"
 git config --global --add safe.directory "$PROJECT_DIR" 2>/dev/null || true
 
-# ── 记录当前版本用于回滚 ──────────────────────────────
-PREV="$(git rev-parse HEAD)"
-log "当前版本: $PREV"
-
-# 部署脚本会以远程 main 为准。覆盖服务器上的跟踪文件前，先保存差异。
-BACKUP_DIR="$BACKUP_ROOT/$(date +%Y%m%d%H%M%S)-$(git rev-parse --short HEAD)"
-install -d -m 700 "$BACKUP_DIR"
-git status --short > "$BACKUP_DIR/status.txt"
-chmod 600 "$BACKUP_DIR/status.txt"
-if ! git diff --quiet; then
-    git diff --binary > "$BACKUP_DIR/tracked-changes.patch"
-    chmod 600 "$BACKUP_DIR/tracked-changes.patch"
-    log "服务器本地差异已备份到: $BACKUP_DIR"
-fi
-
-# ── 导入目标版本 ─────────────────────────────────────
-# CI 优先传入已校验的 Git bundle，避免生产 ECS 必须直连 github.com。
-# 手工执行未传 bundle 时，仍保留原来的远程拉取方式。
-if [ -n "$RELEASE_BUNDLE" ]; then
-    log "从 CI 离线部署包导入目标版本。"
-    git fetch --no-tags "$RELEASE_BUNDLE" HEAD
-    git reset --hard FETCH_HEAD
+# 切换 Git 版本后重新载入目标版本中的部署脚本，确保本次发布立即采用
+# 新的运行时、迁移和回滚逻辑。PREV 通过环境保留，避免把目标版本当成回滚点。
+if [ "${SHUXUE_DEPLOY_RESUMED:-0}" = "1" ]; then
+    PREV="${SHUXUE_PREV_COMMIT:?missing previous commit for resumed deployment}"
+    log "已载入目标版本部署入口，回滚版本: $PREV"
 else
-    git fetch --prune origin "$BRANCH"
-    git reset --hard "origin/$BRANCH"
+    # ── 记录当前版本用于回滚 ──────────────────────────
+    PREV="$(git rev-parse HEAD)"
+    log "当前版本: $PREV"
+
+    # 覆盖服务器上的跟踪文件前，先保存本地差异。
+    BACKUP_DIR="$BACKUP_ROOT/$(date +%Y%m%d%H%M%S)-$(git rev-parse --short HEAD)"
+    install -d -m 700 "$BACKUP_DIR"
+    git status --short > "$BACKUP_DIR/status.txt"
+    chmod 600 "$BACKUP_DIR/status.txt"
+    if ! git diff --quiet; then
+        git diff --binary > "$BACKUP_DIR/tracked-changes.patch"
+        chmod 600 "$BACKUP_DIR/tracked-changes.patch"
+        log "服务器本地差异已备份到: $BACKUP_DIR"
+    fi
+
+    # ── 导入目标版本 ─────────────────────────────────
+    # CI 优先传入已校验的 Git bundle，避免生产 ECS 必须直连 github.com。
+    if [ -n "$RELEASE_BUNDLE" ]; then
+        log "从 CI 离线部署包导入目标版本。"
+        git fetch --no-tags "$RELEASE_BUNDLE" HEAD
+        git reset --hard FETCH_HEAD
+    else
+        git fetch --prune origin "$BRANCH"
+        git reset --hard "origin/$BRANCH"
+    fi
+
+    export SHUXUE_DEPLOY_RESUMED=1
+    export SHUXUE_PREV_COMMIT="$PREV"
+    if [ -n "$RELEASE_BUNDLE" ]; then
+        exec "$PROJECT_DIR/deploy/deploy.sh" --bundle "$RELEASE_BUNDLE"
+    else
+        exec "$PROJECT_DIR/deploy/deploy.sh"
+    fi
 fi
 NEW="$(git rev-parse HEAD)"
 log "目标版本: $NEW"
