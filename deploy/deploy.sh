@@ -30,6 +30,8 @@ VENV_DIR="${SHUXUE_VENV_DIR:-$PROJECT_DIR/venv311}"
 HEALTH_URL="${SHUXUE_HEALTH_URL:-http://127.0.0.1:8000/api/v1/ready}"
 LEGACY_HEALTH_URL="${SHUXUE_LEGACY_HEALTH_URL:-http://127.0.0.1:8000/api/questions}"
 ADMIN_HEALTH_URL="${SHUXUE_ADMIN_HEALTH_URL:-https://admin.shuxue.icu/admin.html}"
+ADMIN_PREP_HEALTH_URL="${SHUXUE_ADMIN_PREP_HEALTH_URL:-https://admin.shuxue.icu/prep.html}"
+PUBLIC_LECTURES_HEALTH_URL="${SHUXUE_PUBLIC_LECTURES_HEALTH_URL:-https://shuxue.icu/lectures.html}"
 BRANCH="${SHUXUE_BRANCH:-main}"
 HEALTH_RETRIES="${SHUXUE_HEALTH_RETRIES:-10}"
 HEALTH_INTERVAL="${SHUXUE_HEALTH_INTERVAL:-2}"
@@ -245,6 +247,8 @@ health_ok() {
     local allow_legacy="${1:-0}"
     local code=""
     local admin_code=""
+    local admin_prep_code=""
+    local public_lectures_code=""
     for _ in $(seq 1 "$HEALTH_RETRIES"); do
         if ! systemctl is-active --quiet shuxue || ! systemctl is-active --quiet shuxue-worker; then
             sleep "$HEALTH_INTERVAL"
@@ -253,7 +257,14 @@ health_ok() {
         code="$(curl -s -o /dev/null -w '%{http_code}' --max-time 5 "$HEALTH_URL" || true)"
         admin_code="$(curl -ks -o /dev/null -w '%{http_code}' --max-time 5 \
             --resolve admin.shuxue.icu:443:127.0.0.1 "$ADMIN_HEALTH_URL" || true)"
-        if [ "$code" = "200" ] && [ "$admin_code" = "200" ]; then
+        admin_prep_code="$(curl -ks -o /dev/null -w '%{http_code}' --max-time 5 \
+            --resolve admin.shuxue.icu:443:127.0.0.1 "$ADMIN_PREP_HEALTH_URL" || true)"
+        public_lectures_code="$(curl -ks -o /dev/null -w '%{http_code}' --max-time 5 \
+            --resolve shuxue.icu:443:127.0.0.1 "$PUBLIC_LECTURES_HEALTH_URL" || true)"
+        if [ "$code" = "200" ] \
+            && [ "$admin_code" = "200" ] \
+            && [ "$admin_prep_code" = "200" ] \
+            && [ "$public_lectures_code" = "200" ]; then
             return 0
         fi
         if [ "$allow_legacy" = "1" ]; then

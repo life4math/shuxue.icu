@@ -1085,6 +1085,15 @@ def test_health_and_readiness(tmp_path):
     assert ready.get_json() == {"status": "ready", "database": "ok"}
 
 
+def test_admin_nginx_allows_lesson_prep_and_local_vendor_assets():
+    config_path = os.path.join(ROOT, "deploy", "admin.shuxue.icu.conf.example")
+    with open(config_path, encoding="utf-8") as handle:
+        config = handle.read()
+    assert "location = /prep.html" in config
+    assert "try_files /prep.html =404;" in config
+    assert "location /vendor/" in config
+
+
 def bytes_io(content):
     from io import BytesIO
 

@@ -42,8 +42,13 @@ server {
         try_files /admin.html =404;
         add_header Cache-Control "no-store" always;
     }
+    location = /prep.html {
+        try_files /prep.html =404;
+        add_header Cache-Control "no-store" always;
+    }
     location /css/ { expires 1h; }
     location /js/ { expires 1h; }
+    location /vendor/ { expires 1h; }
     location ^~ /scripts/ { return 404; }
     location ^~ /uploads/ { return 404; }
     location = /api/v1/auth/login {
