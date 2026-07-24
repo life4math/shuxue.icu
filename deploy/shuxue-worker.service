@@ -7,10 +7,9 @@ Requires=shuxue.service
 User=nginx
 Group=nginx
 WorkingDirectory=/var/www/shuxue/website/scripts
-Environment="PATH=/var/www/shuxue/venv/bin:/usr/bin"
-Environment="SHUXUE_NODE_PATH=/usr/bin/node"
+Environment="PATH=/var/www/shuxue/venv311/bin:/usr/bin"
 EnvironmentFile=-/etc/shuxue/shuxue.env
-ExecStart=/var/www/shuxue/venv/bin/python worker.py
+ExecStart=/var/www/shuxue/venv311/bin/python worker.py
 Restart=always
 RestartSec=5
 

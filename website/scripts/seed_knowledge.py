@@ -8,7 +8,6 @@
 
 import argparse
 import json
-import subprocess
 from pathlib import Path
 
 from sqlalchemy import select
@@ -17,26 +16,14 @@ from platform_db import KnowledgeDocument, PublishedKnowledge, SessionLocal, Use
 
 
 SCRIPT_DIR = Path(__file__).resolve().parent
-CONTENT_PATH = SCRIPT_DIR.parent / "js" / "knowledge-content.js"
+CONTENT_PATH = SCRIPT_DIR.parent / "data" / "knowledge-content.json"
 
 
 def read_static_content():
-    source = CONTENT_PATH.read_text(encoding="utf-8")
-    source = source.replace("const knowledgeDetails =", "var knowledgeDetails =", 1)
-    node_script = (
-        "const vm=require('vm');const s={};"
-        "vm.runInNewContext(process.argv[1],s);"
-        "process.stdout.write(JSON.stringify(s.knowledgeDetails));"
-    )
-    result = subprocess.run(
-        ["node", "-e", node_script, source],
-        check=True,
-        capture_output=True,
-        text=True,
-        encoding="utf-8",
-        timeout=15,
-    )
-    return json.loads(result.stdout)
+    contents = json.loads(CONTENT_PATH.read_text(encoding="utf-8"))
+    if not isinstance(contents, dict):
+        raise ValueError("knowledge-content.json 顶层必须是对象")
+    return contents
 
 
 def seed_contents(db, user, contents, status="published", bootstrap_missing=False):

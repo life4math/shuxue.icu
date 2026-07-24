@@ -29,7 +29,7 @@ fi
 
 PROJECT_DIR="/var/www/shuxue"
 WEBSITE_DIR="$PROJECT_DIR/website"
-VENV_DIR="$PROJECT_DIR/venv"
+VENV_DIR="$PROJECT_DIR/venv311"
 REPO_URL="https://github.com/life4math/shuxue.icu.git"
 
 # 私有仓库 token 支持
@@ -128,13 +128,12 @@ dnf upgrade-minimal --security -y --skip-broken 2>/dev/null || {
     echo -e "${YELLOW}  安全更新部分跳过，不影响部署${NC}"
 }
 
-# 使用 python38 (python39 模块在等保2.0系统上不存在，只有 python27/36/38)
+# 使用阿里云 Linux 官方更新仓库中的 Python 3.11，替代已 EOL 的 3.8。
 dnf install -y epel-release 2>/dev/null || true
-dnf module enable -y python38:3.8 2>/dev/null || true
-dnf install -y nginx python38 python38-pip git
+dnf install -y nginx python3.11 python3.11-pip git
 
 echo -e "${GREEN}  -> 系统依赖安装完成${NC}"
-echo -e "  Python: $(python3.8 --version 2>&1)"
+echo -e "  Python: $(python3.11 --version 2>&1)"
 echo -e "  Nginx:  $(nginx -v 2>&1)"
 echo ""
 
@@ -171,15 +170,15 @@ echo -e "  Web 文件: $WEBSITE_DIR"
 echo ""
 
 # ========================================
-# 第3步: 创建 Python 3.8 虚拟环境
+# 第3步: 创建 Python 3.11 虚拟环境
 # ========================================
-echo -e "${YELLOW}[3/8] 创建 Python 3.8 虚拟环境...${NC}"
+echo -e "${YELLOW}[3/8] 创建 Python 3.11 虚拟环境...${NC}"
 
-# 使用 python3.8 创建 venv (python39 模块不存在，系统只有 27/36/38)
-python3.8 -m venv "$VENV_DIR"
+# 使用独立目录，切换失败时可立即恢复旧的 Python 3.8 venv。
+python3.11 -m venv "$VENV_DIR"
 source "$VENV_DIR/bin/activate"
-pip install --upgrade "pip<26" -q
-pip install --require-hashes -r "$PROJECT_DIR/requirements-py38.lock" -q
+pip install --upgrade "pip<27" -q
+pip install --require-hashes -r "$PROJECT_DIR/requirements-py311.lock" -q
 
 echo -e "${GREEN}  -> Python 依赖安装完成${NC}"
 python -c "import flask; print(f'  Flask {flask.__version__}')"
@@ -216,8 +215,6 @@ find "$WEBSITE_DIR" -type d -exec chmod 755 {} +
 find "$WEBSITE_DIR" -type f -exec chmod 644 {} +
 chown -R nginx:nginx "$WEBSITE_DIR/uploads" "$WEBSITE_DIR/scripts/output"
 chmod -R 775 "$WEBSITE_DIR/uploads" "$WEBSITE_DIR/scripts/output"
-chown nginx:nginx "$WEBSITE_DIR/js/data.js" 2>/dev/null || true
-chmod 664 "$WEBSITE_DIR/js/data.js" 2>/dev/null || true
 if [ -f "$WEBSITE_DIR/scripts/platform.db" ]; then
     chown nginx:nginx "$WEBSITE_DIR/scripts/platform.db"
     chmod 660 "$WEBSITE_DIR/scripts/platform.db"
@@ -240,15 +237,15 @@ ENV_FILE="$ENV_DIR/shuxue.env"
 
 install -d -m 700 "$ENV_DIR"
 if [ ! -f "$ENV_FILE" ]; then
-    ADMIN_TOKEN="$(python3.8 -c 'import secrets; print(secrets.token_hex(32))')"
-    SESSION_SECRET="$(python3.8 -c 'import secrets; print(secrets.token_hex(48))')"
+    ADMIN_TOKEN="$(python3.11 -c 'import secrets; print(secrets.token_hex(32))')"
+    SESSION_SECRET="$(python3.11 -c 'import secrets; print(secrets.token_hex(48))')"
     printf 'SHUXUE_ADMIN_TOKEN=%s\nSHUXUE_SESSION_SECRET=%s\n' \
         "$ADMIN_TOKEN" "$SESSION_SECRET" > "$ENV_FILE"
     chmod 600 "$ENV_FILE"
     echo -e "${GREEN}  -> 已生成管理 API 令牌: $ENV_FILE${NC}"
 else
     if ! grep -q '^SHUXUE_SESSION_SECRET=' "$ENV_FILE"; then
-        SESSION_SECRET="$(python3.8 -c 'import secrets; print(secrets.token_hex(48))')"
+        SESSION_SECRET="$(python3.11 -c 'import secrets; print(secrets.token_hex(48))')"
         printf 'SHUXUE_SESSION_SECRET=%s\n' "$SESSION_SECRET" >> "$ENV_FILE"
     fi
     chmod 600 "$ENV_FILE"
@@ -268,14 +265,13 @@ After=network.target
 User=nginx
 Group=nginx
 WorkingDirectory=/var/www/shuxue/website/scripts
-Environment="PATH=/var/www/shuxue/venv/bin:/usr/bin"
+Environment="PATH=/var/www/shuxue/venv311/bin:/usr/bin"
 Environment="SHUXUE_PORT=8000"
-Environment="SHUXUE_NODE_PATH=/usr/bin/node"
 Environment="SHUXUE_ENV=production"
 EnvironmentFile=-/etc/shuxue/shuxue.env
-ExecStartPre=/var/www/shuxue/venv/bin/python migrate.py
-ExecStartPre=/var/www/shuxue/venv/bin/python seed_knowledge.py --bootstrap-missing
-ExecStart=/var/www/shuxue/venv/bin/gunicorn -w 2 -b 127.0.0.1:8000 server:app
+ExecStartPre=/var/www/shuxue/venv311/bin/python migrate.py
+ExecStartPre=/var/www/shuxue/venv311/bin/python seed_knowledge.py --bootstrap-missing
+ExecStart=/var/www/shuxue/venv311/bin/gunicorn -w 2 -b 127.0.0.1:8000 server:app
 Restart=always
 RestartSec=3
 

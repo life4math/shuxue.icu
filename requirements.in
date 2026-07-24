@@ -1,4 +1,9 @@
-# 直接依赖清单。更新版本后运行：
+# 直接依赖清单。生产 Python 3.11 锁文件更新命令：
+# uv pip compile requirements.in --python-version 3.11 \
+#   --python-platform x86_64-manylinux2014 --generate-hashes \
+#   --output-file requirements-py311.lock
+#
+# 迁移期保留的 Python 3.8 回滚锁文件：
 # uv pip compile requirements.in --python-version 3.8 \
 #   --python-platform x86_64-manylinux2014 --generate-hashes \
 #   --output-file requirements-py38.lock

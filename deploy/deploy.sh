@@ -25,7 +25,8 @@ if [ "$#" -ne 0 ]; then
 fi
 
 PROJECT_DIR="${SHUXUE_PROJECT_DIR:-/var/www/shuxue}"
-VENV_DIR="${SHUXUE_VENV_DIR:-$PROJECT_DIR/venv}"
+PYTHON_BIN="${SHUXUE_PYTHON_BIN:-python3.11}"
+VENV_DIR="${SHUXUE_VENV_DIR:-$PROJECT_DIR/venv311}"
 HEALTH_URL="${SHUXUE_HEALTH_URL:-http://127.0.0.1:8000/api/v1/ready}"
 LEGACY_HEALTH_URL="${SHUXUE_LEGACY_HEALTH_URL:-http://127.0.0.1:8000/api/questions}"
 ADMIN_HEALTH_URL="${SHUXUE_ADMIN_HEALTH_URL:-https://admin.shuxue.icu/admin.html}"
@@ -71,10 +72,41 @@ NEW="$(git rev-parse HEAD)"
 log "目标版本: $NEW"
 
 sync_deps() {
-    # shellcheck disable=SC1091
-    source "$VENV_DIR/bin/activate"
-    pip install -q --require-hashes -r requirements-py38.lock
-    deactivate 2>/dev/null || true
+    "$VENV_DIR/bin/python" -m pip install -q \
+        --require-hashes -r requirements-py311.lock
+}
+
+ensure_runtime() {
+    if ! command -v "$PYTHON_BIN" >/dev/null 2>&1; then
+        log "安装受支持的 Python 3.11 运行时。"
+        dnf install -y python3.11 python3.11-pip
+    fi
+    if [ ! -x "$VENV_DIR/bin/python" ]; then
+        log "创建 Python 3.11 虚拟环境: $VENV_DIR"
+        "$PYTHON_BIN" -m venv "$VENV_DIR"
+    fi
+    "$VENV_DIR/bin/python" -c \
+        'import sys; assert sys.version_info[:2] == (3, 11), sys.version'
+    "$VENV_DIR/bin/python" -m pip install -q --upgrade "pip<27"
+}
+
+sync_rollback_deps() {
+    local rollback_venv="$PROJECT_DIR/venv"
+    local rollback_lock="requirements-py38.lock"
+    if grep -q '/venv311/' deploy/shuxue.service 2>/dev/null; then
+        rollback_venv="$PROJECT_DIR/venv311"
+        rollback_lock="requirements-py311.lock"
+    fi
+    if [ ! -x "$rollback_venv/bin/python" ]; then
+        log "回滚版本的虚拟环境不存在，跳过依赖同步。"
+        return 0
+    fi
+    if [ -f "$rollback_lock" ]; then
+        "$rollback_venv/bin/python" -m pip install -q \
+            --require-hashes -r "$rollback_lock"
+    else
+        "$rollback_venv/bin/python" -m pip install -q -r requirements.txt
+    fi
 }
 
 ensure_environment_secrets() {
@@ -87,11 +119,11 @@ ensure_environment_secrets() {
     chmod 600 "$environment_file"
 
     if ! grep -q '^SHUXUE_ADMIN_TOKEN=' "$environment_file"; then
-        generated="$(python3.8 -c 'import secrets; print(secrets.token_hex(32))')"
+        generated="$("$PYTHON_BIN" -c 'import secrets; print(secrets.token_hex(32))')"
         printf 'SHUXUE_ADMIN_TOKEN=%s\n' "$generated" >> "$environment_file"
     fi
     if ! grep -q '^SHUXUE_SESSION_SECRET=' "$environment_file"; then
-        generated="$(python3.8 -c 'import secrets; print(secrets.token_hex(48))')"
+        generated="$("$PYTHON_BIN" -c 'import secrets; print(secrets.token_hex(48))')"
         printf 'SHUXUE_SESSION_SECRET=%s\n' "$generated" >> "$environment_file"
     fi
 }
@@ -114,10 +146,6 @@ secure_permissions() {
     if [ -f "$PROJECT_DIR/website/scripts/platform.db" ]; then
         chown nginx:nginx "$PROJECT_DIR/website/scripts/platform.db"
         chmod 660 "$PROJECT_DIR/website/scripts/platform.db"
-    fi
-    if [ -f "$PROJECT_DIR/website/js/data.js" ]; then
-        chown nginx:nginx "$PROJECT_DIR/website/js/data.js"
-        chmod 664 "$PROJECT_DIR/website/js/data.js"
     fi
 }
 
@@ -208,7 +236,7 @@ health_ok() {
 rollback() {
     log "部署失败，回滚到上一版本: $PREV"
     git reset --hard "$PREV"
-    sync_deps || true
+    sync_rollback_deps || true
     secure_permissions || true
     install_services || true
     install_nginx_config || true
@@ -231,7 +259,7 @@ if ! python3.8 deploy/check_integrity.py \
 fi
 
 # ── 同步依赖、运行配置并重启 ─────────────────────────
-if ! sync_deps || ! ensure_environment_secrets || ! secure_permissions \
+if ! ensure_runtime || ! sync_deps || ! ensure_environment_secrets || ! secure_permissions \
     || ! install_services || ! install_nginx_config || ! restart_services; then
     rollback
     exit 1

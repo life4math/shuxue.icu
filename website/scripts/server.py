@@ -4,15 +4,11 @@ shuxue.icu 后端服务 — 文件上传 + 处理管线 + 审核管理
 =====================================================
 Flask 轻量后端，提供 RESTful API：
   POST /api/upload        — 上传文件（图片/PDF/Word/文本）
-  POST /api/process       — 触发 AI 提取管线
-  GET  /api/review        — 获取审核队列
-  POST /api/approve/:id   — 审核通过
-  POST /api/reject/:id    — 审核拒绝
+  POST /api/process       — 已下线，改用 /api/v1/admin/jobs
+  GET  /api/review        — 已下线，改用 /api/v1/admin/reviews
   GET  /api/schema        — 获取数据格式 Schema
-  GET  /api/questions     — 获取题库数据
-  GET  /api/methods       — 获取方法库数据
-  POST /api/save-question — 手动保存/编辑题目
-  POST /api/save-method   — 手动保存/编辑方法
+  GET  /api/questions     — 读取公开原型的虚构演示题目
+  GET  /api/methods       — 读取公开原型的虚构演示方法
 """
 
 import os
@@ -23,7 +19,6 @@ import hashlib
 import hmac
 import datetime
 import shutil
-import tempfile
 import threading
 from pathlib import Path
 from flask import Flask, request, jsonify, send_from_directory, send_file, g
@@ -37,7 +32,7 @@ except ImportError:  # Windows 开发环境回退；生产 Linux 使用 flock
 # ─── 配置 ─────────────────────────────────────────────
 SCRIPT_DIR = Path(__file__).resolve().parent
 WEBSITE_DIR = SCRIPT_DIR.parent
-DATA_JS_PATH = WEBSITE_DIR / "js" / "data.js"
+DEMO_DATA_PATH = WEBSITE_DIR / "data" / "demo-content.json"
 UPLOAD_DIR = WEBSITE_DIR / "uploads"
 OUTPUT_DIR = SCRIPT_DIR / "output"
 SCHEMA_PATH = SCRIPT_DIR / "schema.json"
@@ -137,13 +132,15 @@ def resolve_upload_path(filename):
 _counters = {"Q": 0, "M": 0, "R": 0}
 
 def load_counters():
-    if not DATA_JS_PATH.exists():
+    if not DEMO_DATA_PATH.exists():
         return
-    content = DATA_JS_PATH.read_text(encoding="utf-8")
-    for match in re.finditer(r'id:\s*"(Q\d+|M\d+|R\d+)"', content):
-        prefix = match.group(1)[0]
-        num = int(match.group(1)[1:])
-        _counters[prefix] = max(_counters[prefix], num)
+    data = json.loads(DEMO_DATA_PATH.read_text(encoding="utf-8"))
+    for collection in ("questions", "methods", "reviewQueue"):
+        for item in data.get(collection, []):
+            item_id = str(item.get("id", ""))
+            if re.fullmatch(r"[QMR]\d+", item_id):
+                prefix = item_id[0]
+                _counters[prefix] = max(_counters[prefix], int(item_id[1:]))
 
 def next_id(prefix):
     _counters[prefix] += 1
@@ -410,103 +407,28 @@ def _split_content(content, max_chars=2000):
     if current: chunks.append(current)
     return chunks or [content[:max_chars]]
 
-# ─── data.js 读写 ────────────────────────────────────
-def read_data_js():
-    """读取 data.js，返回三个数组的 JSON 对象
-    data.js 使用 JS 对象语法（无引号 key），需要用 Node.js 解析"""
-    if not DATA_JS_PATH.exists():
-        return {"questions": [], "methods": [], "reviewQueue": []}
+# ─── 公开原型演示数据（只读）──────────────────────────
+def read_demo_content():
+    """读取纯 JSON 演示数据；生产写操作统一走 /api/v1 与数据库。"""
+    empty = {"questions": [], "methods": [], "reviewQueue": []}
+    if not DEMO_DATA_PATH.exists():
+        return empty
+    data = json.loads(DEMO_DATA_PATH.read_text(encoding="utf-8"))
+    if not isinstance(data, dict):
+        raise ValueError("demo-content.json 顶层必须是对象")
+    return {
+        key: data.get(key, []) if isinstance(data.get(key, []), list) else []
+        for key in empty
+    }
 
-    # 用 Node.js 解析 JS 对象语法
-    # const 在 vm sandbox 中不会成为全局变量，需要替换为 var
-    node_path = os.environ.get("SHUXUE_NODE_PATH", "node")
-    data_js_str = str(DATA_JS_PATH).replace("\\", "/")
-    script = (
-        "const fs=require('fs');const vm=require('vm');"
-        "let c=fs.readFileSync('" + data_js_str + "','utf8');"
-        "c=c.replace(/^const /gm,'var ');"
-        "const sb={};vm.runInNewContext(c,sb);"
-        "const r={questions:sb.questions||[],"
-        "methods:sb.methods||[],"
-        "reviewQueue:sb.reviewQueue||[]};"
-        "process.stdout.write(JSON.stringify(r));"
-    )
-    try:
-        import subprocess
-        proc = subprocess.run(
-            [node_path, "-e", script],
-            capture_output=True, text=True, timeout=5
-        )
-        if proc.returncode == 0 and proc.stdout:
-            return json.loads(proc.stdout)
-    except Exception as e:
-        print(f"[!] Node.js parse failed: {e}")
 
-    # fallback: 尝试 regex + JSON（适用于标准 JSON 格式的数据）
-    content = DATA_JS_PATH.read_text(encoding="utf-8")
-    result = {}
-    for key in ["questions", "methods", "reviewQueue"]:
-        pattern = rf"const {key}\s*=\s*(\[.*?\]);"
-        match = re.search(pattern, content, re.DOTALL)
-        if match:
-            try:
-                result[key] = json.loads(match.group(1))
-            except json.JSONDecodeError:
-                result[key] = []
-    return result
-
-def write_data_js(data):
-    """将完整数据写回 data.js"""
-    sections = []
-    # 先读取原始文件中的知识树和学生数据
-    if DATA_JS_PATH.exists():
-        content = DATA_JS_PATH.read_text(encoding="utf-8")
-        # 保留 knowledgeTree
-        kt_match = re.search(r"const knowledgeTree\s*=\s*(\[.*?\]);", content, re.DOTALL)
-        if kt_match:
-            sections.append(f"const knowledgeTree = {kt_match.group(1)};")
-        # 保留 students
-        st_match = re.search(r"const students\s*=\s*(\[.*?\]);", content, re.DOTALL)
-        if st_match:
-            sections.append(f"const students = {st_match.group(1)};")
-        # 保留工具函数
-        util_match = re.search(r"// --- 工具函数 ---.*", content, re.DOTALL)
-        if util_match:
-            sections.append(util_match.group(0))
-
-    js_content = f"""// shuxue.icu 统一数据格式
-// Schema: scripts/schema.json
-// 最后更新: {datetime.datetime.now().isoformat()}
-
-const questions = {json.dumps(data.get("questions", []), indent=2, ensure_ascii=False)};
-
-const methods = {json.dumps(data.get("methods", []), indent=2, ensure_ascii=False)};
-
-const reviewQueue = {json.dumps(data.get("reviewQueue", []), indent=2, ensure_ascii=False)};
-
-"""
-    for section in sections:
-        js_content += section + "\n\n"
-
-    DATA_JS_PATH.parent.mkdir(parents=True, exist_ok=True)
-    temp_path = None
-    try:
-        with tempfile.NamedTemporaryFile(
-            mode="w",
-            encoding="utf-8",
-            dir=str(DATA_JS_PATH.parent),
-            prefix=".data.",
-            suffix=".tmp",
-            delete=False,
-        ) as temp_file:
-            temp_file.write(js_content)
-            temp_file.flush()
-            os.fsync(temp_file.fileno())
-            temp_path = Path(temp_file.name)
-        os.replace(temp_path, DATA_JS_PATH)
-    finally:
-        if temp_path and temp_path.exists():
-            temp_path.unlink()
+def legacy_write_removed():
+    return jsonify(
+        {
+            "error": "legacy write API has been removed",
+            "replacement": "/api/v1/admin/uploads",
+        }
+    ), 410
 
 # ─── API 路由 ─────────────────────────────────────────
 
@@ -584,115 +506,32 @@ def upload_batch():
 
 @app.route("/api/process", methods=["POST"])
 def process_uploaded():
-    """处理已上传的文件"""
-    data = request.get_json() or {}
-    filename = data.get("filename")
-
-    if filename:
-        # 处理单个指定文件
-        filepath = resolve_upload_path(filename)
-        if filepath is None:
-            return jsonify({"error": "invalid filename"}), 400
-        if not filepath.exists():
-            return jsonify({"error": f"file not found: {filename}"}), 404
-        items = process_file(str(filepath), filename)
-    else:
-        # 扫描 uploads 目录所有文件
-        UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
-        all_items = []
-        data = read_data_js()
-        existing = data.get("reviewQueue", [])
-
-        for f in sorted(UPLOAD_DIR.iterdir()):
-            if f.suffix.lower() in ALLOWED_EXTENSIONS:
-                items = process_file(str(f), f.name)
-                all_items.extend(items)
-
-        # 追加到审核队列
-        existing.extend(all_items)
-        data["reviewQueue"] = existing
-        write_data_js(data)
-        items = all_items
-
-    return jsonify({
-        "success": True,
-        "processed": len(items),
-        "items": items
-    })
+    """旧同步处理入口已下线；正式 AI 任务统一由数据库队列处理。"""
+    return legacy_write_removed()
 
 @app.route("/api/review")
 def get_review_queue():
-    """获取审核队列"""
-    data = read_data_js()
-    queue = data.get("reviewQueue", [])
-    return jsonify({"items": queue, "total": len(queue)})
+    """旧文件审核队列已下线。"""
+    return legacy_write_removed()
 
 @app.route("/api/approve/<item_id>", methods=["POST"])
 def approve_item(item_id):
-    """审核通过：合并到正式题库/方法库"""
-    data = read_data_js()
-    queue = data.get("reviewQueue", [])
-    target = None
-    for item in queue:
-        if item["id"] == item_id and item["status"] == "pending":
-            target = item
-            break
-
-    if not target:
-        return jsonify({"error": f"pending item not found: {item_id}"}), 404
-
-    is_method = target["data"].get("methodType") == "method"
-
-    if is_method:
-        method_entry = {k: v for k, v in target["data"].items() if k != "methodType"}
-        method_entry["id"] = next_id("M")
-        method_entry["status"] = "active"
-        method_entry["created_at"] = datetime.datetime.now().isoformat()
-        method_entry.setdefault("examples", [])
-        data["methods"].append(method_entry)
-    else:
-        question_entry = target["data"]
-        question_entry["id"] = next_id("Q")
-        question_entry["status"] = "active"
-        question_entry["created_at"] = datetime.datetime.now().isoformat()
-        question_entry.setdefault("stats", {"total": 0, "correct": 0, "accuracy": 0})
-        question_entry.setdefault("options", [])
-        question_entry.setdefault("tags", [])
-        question_entry.setdefault("source", {"type": "自编"})
-        question_entry.setdefault("analysis", "")
-        question_entry.setdefault("related_methods", [])
-        data["questions"].append(question_entry)
-
-    # 更新审核状态
-    target["status"] = "approved"
-    target["approvedAt"] = datetime.datetime.now().isoformat()
-    target["approvedBy"] = "teacher"
-
-    write_data_js(data)
-    new_id = method_entry["id"] if is_method else question_entry["id"]
-    return jsonify({"success": True, "new_id": new_id, "type": "method" if is_method else "question"})
+    """旧文件审核入口已下线。"""
+    return legacy_write_removed()
 
 @app.route("/api/reject/<item_id>", methods=["POST"])
 def reject_item(item_id):
-    """审核拒绝"""
-    data = read_data_js()
-    queue = data.get("reviewQueue", [])
-    for item in queue:
-        if item["id"] == item_id:
-            item["status"] = "rejected"
-            item["rejectedAt"] = datetime.datetime.now().isoformat()
-            write_data_js(data)
-            return jsonify({"success": True, "id": item_id})
-    return jsonify({"error": "not found"}), 404
+    """旧文件审核入口已下线。"""
+    return legacy_write_removed()
 
 @app.route("/api/questions")
 def get_questions():
-    data = read_data_js()
+    data = read_demo_content()
     return jsonify({"items": data.get("questions", [])})
 
 @app.route("/api/methods")
 def get_methods():
-    data = read_data_js()
+    data = read_demo_content()
     return jsonify({"items": data.get("methods", [])})
 
 @app.route("/api/schema")
@@ -703,63 +542,13 @@ def get_schema():
 
 @app.route("/api/save-question", methods=["POST"])
 def save_question():
-    """手动保存/编辑题目"""
-    q = request.get_json()
-    if not q:
-        return jsonify({"error": "no data"}), 400
-
-    data = read_data_js()
-    questions = data.get("questions", [])
-
-    if q.get("id"):
-        # 编辑已有题目
-        for i, existing in enumerate(questions):
-            if existing["id"] == q["id"]:
-                q["updated_at"] = datetime.datetime.now().isoformat()
-                questions[i] = q
-                break
-    else:
-        # 新建题目
-        q["id"] = next_id("Q")
-        q["status"] = "active"
-        q["created_at"] = datetime.datetime.now().isoformat()
-        q.setdefault("stats", {"total": 0, "correct": 0, "accuracy": 0})
-        q.setdefault("options", [])
-        q.setdefault("tags", [])
-        q.setdefault("analysis", "")
-        q.setdefault("related_methods", [])
-        questions.append(q)
-
-    data["questions"] = questions
-    write_data_js(data)
-    return jsonify({"success": True, "id": q["id"]})
+    """旧文件写入入口已下线。"""
+    return legacy_write_removed()
 
 @app.route("/api/save-method", methods=["POST"])
 def save_method():
-    """手动保存/编辑方法"""
-    m = request.get_json()
-    if not m:
-        return jsonify({"error": "no data"}), 400
-
-    data = read_data_js()
-    methods = data.get("methods", [])
-
-    if m.get("id"):
-        for i, existing in enumerate(methods):
-            if existing["id"] == m["id"]:
-                m["updated_at"] = datetime.datetime.now().isoformat()
-                methods[i] = m
-                break
-    else:
-        m["id"] = next_id("M")
-        m["status"] = "active"
-        m["created_at"] = datetime.datetime.now().isoformat()
-        m.setdefault("examples", [])
-        methods.append(m)
-
-    data["methods"] = methods
-    write_data_js(data)
-    return jsonify({"success": True, "id": m["id"]})
+    """旧文件写入入口已下线。"""
+    return legacy_write_removed()
 
 @app.route("/api/uploads-list")
 def list_uploads():
@@ -818,7 +607,7 @@ if __name__ == "__main__":
     print("shuxue.icu backend server")
     print(f"  website dir: {WEBSITE_DIR}")
     print(f"  upload dir:  {UPLOAD_DIR}")
-    print(f"  data.js:     {DATA_JS_PATH}")
+    print(f"  demo data:   {DEMO_DATA_PATH}")
     print(f"  schema:      {SCHEMA_PATH}")
     print("=" * 50)
 

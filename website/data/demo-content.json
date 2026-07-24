@@ -1,0 +1,1025 @@
+{
+  "questions": [
+    {
+      "id": "Q001",
+      "module": "FUNC",
+      "knowledge_points": [
+        "FUNC-02-02-01"
+      ],
+      "difficulty": 2,
+      "type": "choice",
+      "status": "approved",
+      "stem": "已知函数 $f(x) = x^2 - 2ax + 3$ 在区间 $[1, +\\infty)$ 上单调递增，则实数 $a$ 的取值范围是",
+      "options": [
+        {
+          "label": "A",
+          "content": "$a \\leq 1$"
+        },
+        {
+          "label": "B",
+          "content": "$a \\geq 1$"
+        },
+        {
+          "label": "C",
+          "content": "$a \\leq -1$"
+        },
+        {
+          "label": "D",
+          "content": "$a \\geq -1$"
+        }
+      ],
+      "answer": "A",
+      "analysis": "函数 $f(x) = x^2 - 2ax + 3$ 的对称轴为 $x = a$。因为函数在 $[1, +\\infty)$ 上单调递增，所以对称轴 $a \\leq 1$。",
+      "tags": [
+        "单调性",
+        "二次函数"
+      ],
+      "source": {
+        "type": "真题",
+        "year": 2023,
+        "region": "全国I卷"
+      },
+      "stats": {
+        "total": 156,
+        "correct": 128,
+        "accuracy": 82
+      }
+    },
+    {
+      "id": "Q002",
+      "module": "FUNC",
+      "knowledge_points": [
+        "FUNC-02-02-02"
+      ],
+      "difficulty": 3,
+      "type": "choice",
+      "status": "approved",
+      "stem": "已知函数 $f(x)$ 是定义在 $\\mathbb{R}$ 上的奇函数，当 $x > 0$ 时，$f(x) = x^2 - 2x + 3$，则 $f(-1) = $",
+      "options": [
+        {
+          "label": "A",
+          "content": "$-2$"
+        },
+        {
+          "label": "B",
+          "content": "$2$"
+        },
+        {
+          "label": "C",
+          "content": "$-6$"
+        },
+        {
+          "label": "D",
+          "content": "$6$"
+        }
+      ],
+      "answer": "A",
+      "analysis": "由奇函数性质：$f(-1) = -f(1)$。当 $x=1$ 时，$f(1) = 1 - 2 + 3 = 2$，所以 $f(-1) = -2$。",
+      "tags": [
+        "奇偶性",
+        "函数求值"
+      ],
+      "source": {
+        "type": "模拟",
+        "year": 2024
+      },
+      "stats": {
+        "total": 203,
+        "correct": 156,
+        "accuracy": 77
+      }
+    },
+    {
+      "id": "Q003",
+      "module": "FUNC",
+      "knowledge_points": [
+        "FUNC-03-04"
+      ],
+      "difficulty": 3,
+      "type": "fill",
+      "status": "approved",
+      "stem": "已知 $\\sin\\alpha + \\cos\\alpha = \\frac{1}{3}$，则 $\\sin 2\\alpha = $ ______。",
+      "answer": "$-\\frac{8}{9}$",
+      "analysis": "由 $(\\sin\\alpha + \\cos\\alpha)^2 = 1 + \\sin 2\\alpha = \\frac{1}{9}$，得 $\\sin 2\\alpha = \\frac{1}{9} - 1 = -\\frac{8}{9}$。",
+      "tags": [
+        "三角恒等变换",
+        "二倍角"
+      ],
+      "source": {
+        "type": "真题",
+        "year": 2022,
+        "region": "全国II卷"
+      },
+      "stats": {
+        "total": 189,
+        "correct": 98,
+        "accuracy": 52
+      }
+    },
+    {
+      "id": "Q004",
+      "module": "FUNC",
+      "knowledge_points": [
+        "FUNC-05-02"
+      ],
+      "difficulty": 4,
+      "type": "solve",
+      "status": "approved",
+      "stem": "已知函数 $f(x) = x^3 - 3ax^2 + 3bx$ 在 $x = 1$ 处有极值 $-1$。\n(1) 求 $a, b$ 的值；\n(2) 求 $f(x)$ 的单调区间。",
+      "answer": "(1) $a = 1, b = 0$; (2) 增区间 $(-\\infty, 0)$ 和 $(2, +\\infty)$，减区间 $(0, 2)$",
+      "analysis": "(1) $f'(x) = 3x^2 - 6ax + 3b$，由 $f'(1) = 0$ 和 $f(1) = -1$ 联立求解。",
+      "tags": [
+        "导数",
+        "极值",
+        "单调性"
+      ],
+      "source": {
+        "type": "真题",
+        "year": 2024,
+        "region": "全国I卷"
+      },
+      "stats": {
+        "total": 234,
+        "correct": 89,
+        "accuracy": 38
+      }
+    },
+    {
+      "id": "Q005",
+      "module": "FUNC",
+      "knowledge_points": [
+        "FUNC-04-04"
+      ],
+      "difficulty": 4,
+      "type": "solve",
+      "status": "approved",
+      "stem": "已知数列 $\\{a_n\\}$ 的前 $n$ 项和 $S_n = n^2 + n$，求数列 $\\left\\{\\frac{1}{a_n a_{n+1}}\\right\\}$ 的前 $n$ 项和 $T_n$。",
+      "answer": "$T_n = \\frac{n}{2(n+1)}$",
+      "analysis": "先求 $a_n = 2n$，再利用裂项相消法求和。",
+      "tags": [
+        "数列",
+        "裂项相消"
+      ],
+      "source": {
+        "type": "模拟",
+        "year": 2024
+      },
+      "stats": {
+        "total": 178,
+        "correct": 67,
+        "accuracy": 38
+      }
+    },
+    {
+      "id": "Q006",
+      "module": "GEOM",
+      "knowledge_points": [
+        "GEOM-01-02"
+      ],
+      "difficulty": 2,
+      "type": "choice",
+      "status": "approved",
+      "stem": "已知向量 $\\vec{a} = (1, 2)$，$\\vec{b} = (3, -1)$，则 $\\vec{a} \\cdot \\vec{b} = $",
+      "options": [
+        {
+          "label": "A",
+          "content": "$1$"
+        },
+        {
+          "label": "B",
+          "content": "$5$"
+        },
+        {
+          "label": "C",
+          "content": "$-1$"
+        },
+        {
+          "label": "D",
+          "content": "$7$"
+        }
+      ],
+      "answer": "A",
+      "analysis": "$\\vec{a} \\cdot \\vec{b} = 1 \\times 3 + 2 \\times (-1) = 3 - 2 = 1$。",
+      "tags": [
+        "向量",
+        "数量积"
+      ],
+      "source": {
+        "type": "真题",
+        "year": 2023,
+        "region": "全国III卷"
+      },
+      "stats": {
+        "total": 267,
+        "correct": 241,
+        "accuracy": 90
+      }
+    },
+    {
+      "id": "Q007",
+      "module": "GEOM",
+      "knowledge_points": [
+        "GEOM-03-03"
+      ],
+      "difficulty": 4,
+      "type": "choice",
+      "status": "approved",
+      "stem": "已知椭圆 $\\frac{x^2}{a^2} + \\frac{y^2}{b^2} = 1 (a > b > 0)$ 的离心率为 $\\frac{\\sqrt{3}}{2}$，短轴长为 $4$，则椭圆的标准方程为",
+      "options": [
+        {
+          "label": "A",
+          "content": "$\\frac{x^2}{16} + \\frac{y^2}{4} = 1$"
+        },
+        {
+          "label": "B",
+          "content": "$\\frac{x^2}{4} + \\frac{y^2}{16} = 1$"
+        },
+        {
+          "label": "C",
+          "content": "$\\frac{x^2}{8} + \\frac{y^2}{4} = 1$"
+        },
+        {
+          "label": "D",
+          "content": "$\\frac{x^2}{12} + \\frac{y^2}{4} = 1$"
+        }
+      ],
+      "answer": "A",
+      "analysis": "由 $2b = 4$ 得 $b = 2$，$e = \\frac{c}{a} = \\frac{\\sqrt{3}}{2}$，$c^2 = a^2 - b^2$，解得 $a^2 = 16$。",
+      "tags": [
+        "椭圆",
+        "离心率"
+      ],
+      "source": {
+        "type": "真题",
+        "year": 2023,
+        "region": "全国I卷"
+      },
+      "stats": {
+        "total": 198,
+        "correct": 112,
+        "accuracy": 57
+      }
+    },
+    {
+      "id": "Q008",
+      "module": "GEOM",
+      "knowledge_points": [
+        "GEOM-02-04"
+      ],
+      "difficulty": 4,
+      "type": "solve",
+      "status": "approved",
+      "stem": "在三棱锥 $P-ABC$ 中，$PA \\perp$ 平面 $ABC$，$PA = AB = AC = 2$，$\\angle BAC = 120°$。\n(1) 证明：$BC \\perp$ 平面 $PAB$；\n(2) 求二面角 $P-BC-A$ 的余弦值。",
+      "answer": "(1) 略; (2) $\\frac{\\sqrt{21}}{7}$",
+      "analysis": "建立空间直角坐标系，利用空间向量法求解。",
+      "tags": [
+        "立体几何",
+        "空间向量",
+        "二面角"
+      ],
+      "source": {
+        "type": "真题",
+        "year": 2024,
+        "region": "全国II卷"
+      },
+      "stats": {
+        "total": 156,
+        "correct": 45,
+        "accuracy": 29
+      }
+    },
+    {
+      "id": "Q009",
+      "module": "ALGE",
+      "knowledge_points": [
+        "ALGE-01-02"
+      ],
+      "difficulty": 3,
+      "type": "fill",
+      "status": "approved",
+      "stem": "已知 $x > 0, y > 0$，且 $x + 2y = 1$，则 $\\frac{1}{x} + \\frac{1}{y}$ 的最小值为 ______。",
+      "answer": "$3 + 2\\sqrt{2}$",
+      "analysis": "利用基本不等式：$\\frac{1}{x} + \\frac{1}{y} = (\\frac{1}{x} + \\frac{1}{y})(x + 2y) = 3 + \\frac{2y}{x} + \\frac{x}{y} \\geq 3 + 2\\sqrt{2}$。",
+      "tags": [
+        "基本不等式",
+        "最值"
+      ],
+      "source": {
+        "type": "模拟",
+        "year": 2024
+      },
+      "stats": {
+        "total": 145,
+        "correct": 82,
+        "accuracy": 57
+      }
+    },
+    {
+      "id": "Q010",
+      "module": "PROB",
+      "knowledge_points": [
+        "PROB-01-03"
+      ],
+      "difficulty": 4,
+      "type": "solve",
+      "status": "approved",
+      "stem": "某工厂生产甲、乙两种产品，甲产品的一等品率为 $80\\%$，二等品率为 $20\\%$；乙产品的一等品率为 $75\\%$，二等品率为 $25\\%$。生产 1 件甲产品，若是一等品则获利润 4 万元，若是二等品则亏损 1 万元；生产 1 件乙产品，若是一等品则获利润 3 万元，若是二等品则亏损 2 万元。设生产甲产品 $x$ 件，乙产品 $y$ 件。\n(1) 求总利润的分布列和数学期望；\n(2) 若总利润不低于 10 万元的概率大于 $0.9$，求至少需要生产甲、乙产品各多少件。",
+      "answer": "(1) 分布列略，$E = 3x + 1.75y$; (2) 根据实际情况讨论",
+      "analysis": "利用期望公式和概率计算求解。",
+      "tags": [
+        "随机变量",
+        "期望",
+        "概率分布"
+      ],
+      "source": {
+        "type": "真题",
+        "year": 2023,
+        "region": "全国I卷"
+      },
+      "stats": {
+        "total": 167,
+        "correct": 34,
+        "accuracy": 20
+      }
+    },
+    {
+      "id": "Q011",
+      "module": "FUNC",
+      "knowledge_points": [
+        "FUNC-03-03"
+      ],
+      "difficulty": 3,
+      "type": "choice",
+      "status": "approved",
+      "stem": "函数 $f(x) = 2\\sin(\\omega x + \\varphi)$（$\\omega > 0$，$|\\varphi| < \\frac{\\pi}{2}$）的部分图象如图所示，则 $f(\\frac{\\pi}{4}) = $",
+      "options": [
+        {
+          "label": "A",
+          "content": "$-\\sqrt{3}$"
+        },
+        {
+          "label": "B",
+          "content": "$-1$"
+        },
+        {
+          "label": "C",
+          "content": "$1$"
+        },
+        {
+          "label": "D",
+          "content": "$\\sqrt{3}$"
+        }
+      ],
+      "answer": "D",
+      "analysis": "由图象确定 $\\omega = 2, \\varphi = \\frac{\\pi}{6}$，代入求值。",
+      "tags": [
+        "三角函数",
+        "图象"
+      ],
+      "source": {
+        "type": "真题",
+        "year": 2022,
+        "region": "全国I卷"
+      },
+      "stats": {
+        "total": 210,
+        "correct": 126,
+        "accuracy": 60
+      }
+    },
+    {
+      "id": "Q012",
+      "module": "FUNC",
+      "knowledge_points": [
+        "FUNC-05-04"
+      ],
+      "difficulty": 5,
+      "type": "proof",
+      "status": "approved",
+      "stem": "已知函数 $f(x) = e^x - ax - 1$。\n(1) 讨论 $f(x)$ 的单调性；\n(2) 若 $f(x) \\geq 0$ 对 $x \\in \\mathbb{R}$ 恒成立，求 $a$ 的取值范围；\n(3) 证明：当 $a = 1$ 时，$e^x \\geq x + 1 + \\frac{x^2}{2}$（$x \\geq 0$）。",
+      "answer": "(1) 当 $a \\leq 0$ 时在 $\\mathbb{R}$ 上递增，当 $a > 0$ 时在 $(-\\infty, \\ln a)$ 递减，$(\\ln a, +\\infty)$ 递增; (2) $a = 1$; (3) 构造函数求导证明",
+      "analysis": "利用导数研究函数性质，分类讨论，构造辅助函数证明不等式。",
+      "tags": [
+        "导数",
+        "不等式证明",
+        "恒成立"
+      ],
+      "source": {
+        "type": "真题",
+        "year": 2024,
+        "region": "全国I卷"
+      },
+      "stats": {
+        "total": 189,
+        "correct": 23,
+        "accuracy": 12
+      }
+    },
+    {
+      "id": "Q013",
+      "module": "PROB",
+      "knowledge_points": [
+        "PROB-02-01"
+      ],
+      "difficulty": 2,
+      "type": "choice",
+      "status": "approved",
+      "stem": "某学校高一年级有 600 名学生，高二年级有 500 名学生，高三年级有 400 名学生。用分层抽样的方法从这三个年级中抽取 150 名学生进行体能测试，则应从高二年级抽取的学生人数为",
+      "options": [
+        {
+          "label": "A",
+          "content": "$40$"
+        },
+        {
+          "label": "B",
+          "content": "$50$"
+        },
+        {
+          "label": "C",
+          "content": "$60$"
+        },
+        {
+          "label": "D",
+          "content": "$75$"
+        }
+      ],
+      "answer": "B",
+      "analysis": "抽样比为 $\\frac{150}{1500} = \\frac{1}{10}$，高二应抽取 $500 \\times \\frac{1}{10} = 50$ 人。",
+      "tags": [
+        "分层抽样"
+      ],
+      "source": {
+        "type": "真题",
+        "year": 2023,
+        "region": "全国II卷"
+      },
+      "stats": {
+        "total": 234,
+        "correct": 215,
+        "accuracy": 92
+      }
+    },
+    {
+      "id": "Q014",
+      "module": "GEOM",
+      "knowledge_points": [
+        "GEOM-03-06"
+      ],
+      "difficulty": 5,
+      "type": "solve",
+      "status": "approved",
+      "stem": "已知椭圆 $C: \\frac{x^2}{4} + y^2 = 1$，过点 $P(0, 1)$ 的直线 $l$ 与椭圆交于 $A, B$ 两点。\n(1) 求 $|PA| \\cdot |PB|$ 的最大值；\n(2) 若 $OA \\perp OB$（$O$ 为坐标原点），求直线 $l$ 的方程。",
+      "answer": "(1) $\\frac{5}{4}$; (2) $y = \\pm\\frac{\\sqrt{2}}{4}x + 1$",
+      "analysis": "联立直线与椭圆方程，利用韦达定理和判别式求解。",
+      "tags": [
+        "椭圆",
+        "直线",
+        "韦达定理"
+      ],
+      "source": {
+        "type": "真题",
+        "year": 2024,
+        "region": "全国I卷"
+      },
+      "stats": {
+        "total": 145,
+        "correct": 18,
+        "accuracy": 12
+      }
+    },
+    {
+      "id": "Q015",
+      "module": "ALGE",
+      "knowledge_points": [
+        "ALGE-03-01"
+      ],
+      "difficulty": 3,
+      "type": "choice",
+      "status": "approved",
+      "stem": "从 6 名男同学和 4 名女同学中选出 3 人参加比赛，要求至少有 1 名女同学，则不同的选法共有",
+      "options": [
+        {
+          "label": "A",
+          "content": "$80$ 种"
+        },
+        {
+          "label": "B",
+          "content": "$100$ 种"
+        },
+        {
+          "label": "C",
+          "content": "$120$ 种"
+        },
+        {
+          "label": "D",
+          "content": "$160$ 种"
+        }
+      ],
+      "answer": "B",
+      "analysis": "$C_{10}^3 - C_6^3 = 120 - 20 = 100$ 种。",
+      "tags": [
+        "排列组合"
+      ],
+      "source": {
+        "type": "模拟",
+        "year": 2024
+      },
+      "stats": {
+        "total": 178,
+        "correct": 134,
+        "accuracy": 75
+      }
+    },
+    {
+      "id": "Q016",
+      "module": "FUNC",
+      "knowledge_points": [
+        "FUNC-02-03"
+      ],
+      "difficulty": 2,
+      "type": "choice",
+      "status": "approved",
+      "stem": "已知 $a = 2^{0.3}$，$b = 0.3^2$，$c = \\log_2 0.3$，则 $a, b, c$ 的大小关系为",
+      "options": [
+        {
+          "label": "A",
+          "content": "$a > b > c$"
+        },
+        {
+          "label": "B",
+          "content": "$b > a > c$"
+        },
+        {
+          "label": "C",
+          "content": "$c > a > b$"
+        },
+        {
+          "label": "D",
+          "content": "$a > c > b$"
+        }
+      ],
+      "answer": "A",
+      "analysis": "$a = 2^{0.3} > 1$，$b = 0.09 < 1$，$c = \\log_2 0.3 < 0$。",
+      "tags": [
+        "指数函数",
+        "对数函数",
+        "比较大小"
+      ],
+      "source": {
+        "type": "真题",
+        "year": 2022,
+        "region": "全国III卷"
+      },
+      "stats": {
+        "total": 245,
+        "correct": 208,
+        "accuracy": 85
+      }
+    },
+    {
+      "id": "Q017",
+      "module": "FUNC",
+      "difficulty": 3,
+      "type": "choice",
+      "stem": "[模拟] 已知函数 $f(x) = x^2 - 2ax + 3$ 在 $x=1$ 处取极小值，求 $a$",
+      "options": [
+        {
+          "label": "A",
+          "content": "$1$"
+        },
+        {
+          "label": "B",
+          "content": "$2$"
+        },
+        {
+          "label": "C",
+          "content": "$3$"
+        },
+        {
+          "label": "D",
+          "content": "$4$"
+        }
+      ],
+      "answer": "A",
+      "analysis": "模拟解析",
+      "tags": [
+        "模拟",
+        "二次函数"
+      ],
+      "knowledge_points": [
+        "FUNC-02-02-01"
+      ],
+      "source": {
+        "type": "自编",
+        "year": 2024,
+        "region": ""
+      },
+      "status": "active",
+      "created_at": "2026-07-22T12:46:45.603491",
+      "stats": {
+        "total": 0,
+        "correct": 0,
+        "accuracy": 0
+      },
+      "related_methods": []
+    }
+  ],
+  "methods": [
+    {
+      "id": "M001",
+      "name": "裂项相消法",
+      "category": "数列求和",
+      "module": "FUNC",
+      "knowledge_points": [
+        "FUNC-04-04"
+      ],
+      "applicable_types": [
+        "fill",
+        "solve"
+      ],
+      "difficulty_range": [
+        3,
+        5
+      ],
+      "keywords": [
+        "数列",
+        "求和",
+        "裂项",
+        "相消",
+        "通项拆分"
+      ],
+      "principle": "将通项 $a_n$ 拆为两项之差 $f(n) - f(n+1)$，求和时中间项正负抵消，仅留首尾",
+      "steps": [
+        "识别通项结构，判断是否可拆为 $f(n) - f(n+1)$ 形式",
+        "写出拆分后的 $a_n = f(n) - f(n+1)$",
+        "展开求和 $S_n = (f(1)-f(2)) + (f(2)-f(3)) + \\cdots + (f(n)-f(n+1))$",
+        "中间项抵消，得 $S_n = f(1) - f(n+1)$",
+        "化简写出最终结果"
+      ],
+      "common_forms": [
+        "$\\frac{1}{n(n+1)} = \\frac{1}{n} - \\frac{1}{n+1}$",
+        "$\\frac{1}{(2n-1)(2n+1)} = \\frac{1}{2}(\\frac{1}{2n-1} - \\frac{1}{2n+1})$",
+        "$\\frac{1}{\\sqrt{n}+\\sqrt{n+1}} = \\sqrt{n+1} - \\sqrt{n}$"
+      ],
+      "examples": [
+        "Q005"
+      ],
+      "pitfalls": [
+        "拆分系数易遗漏（如 $\\frac{1}{2}$ 前置系数）",
+        "首尾项不一定恰好抵消，需单独验证"
+      ]
+    },
+    {
+      "id": "M002",
+      "name": "构造辅助函数法",
+      "category": "不等式证明",
+      "module": "FUNC",
+      "knowledge_points": [
+        "FUNC-05-04"
+      ],
+      "applicable_types": [
+        "solve",
+        "proof"
+      ],
+      "difficulty_range": [
+        4,
+        5
+      ],
+      "keywords": [
+        "导数",
+        "不等式",
+        "恒成立",
+        "构造函数",
+        "辅助函数"
+      ],
+      "principle": "将不等式转化为函数单调性/极值问题，构造 $g(x)$ 使得原不等式等价于 $g(x) \\geq 0$",
+      "steps": [
+        "观察不等式结构，确定构造目标：$g(x) \\geq 0$ 或 $g(x) \\leq 0$",
+        "构造辅助函数 $g(x)$（移项使一侧为 0）",
+        "求 $g'(x)$，分析 $g(x)$ 的单调性",
+        "找到 $g(x)$ 的极值/最值点",
+        "由最值推断 $g(x)$ 的符号，完成证明"
+      ],
+      "common_forms": [
+        "$e^x \\geq x+1$ → 构造 $g(x)=e^x-x-1$",
+        "$\\ln x \\leq x-1$ → 构造 $g(x)=\\ln x-x+1$",
+        "$f(x) \\geq g(x)$ → 构造 $h(x)=f(x)-g(x)$"
+      ],
+      "examples": [
+        "Q012"
+      ],
+      "pitfalls": [
+        "构造方向错误（移项到哪一侧）",
+        "忘记验证边界条件（$x=0$ 等）",
+        "二次构造时忽略外层函数单调性"
+      ]
+    },
+    {
+      "id": "M003",
+      "name": "韦达定理联立法",
+      "category": "圆锥曲线",
+      "module": "GEOM",
+      "knowledge_points": [
+        "GEOM-03-06"
+      ],
+      "applicable_types": [
+        "solve"
+      ],
+      "difficulty_range": [
+        4,
+        5
+      ],
+      "keywords": [
+        "椭圆",
+        "双曲线",
+        "抛物线",
+        "韦达定理",
+        "联立",
+        "弦长",
+        "点差法"
+      ],
+      "principle": "将直线方程代入曲线方程，利用韦达定理 $x_1+x_2, x_1 x_2$ 表示关系，避免求交点坐标",
+      "steps": [
+        "设直线方程 $y=kx+m$（或参数方程）",
+        "代入曲线方程，整理为关于 $x$（或 $y$）的一元二次方程",
+        "写出韦达定理：$x_1+x_2=-\\frac{b}{a}$, $x_1 x_2=\\frac{c}{a}$",
+        "将目标表达式用 $x_1+x_2, x_1 x_2$ 表示",
+        "消参求解"
+      ],
+      "common_forms": [
+        "弦长 $|AB|=\\sqrt{1+k^2}|x_1-x_2|=\\sqrt{1+k^2}\\sqrt{(x_1+x_2)^2-4x_1 x_2}$",
+        "面积 $S=\\frac{1}{2}|y_1-y_2| \\cdot d$",
+        "$\\vec{OA} \\cdot \\vec{OB}=x_1 x_2 + y_1 y_2$"
+      ],
+      "examples": [
+        "Q014"
+      ],
+      "pitfalls": [
+        "忘记验证 $\\Delta > 0$（直线与曲线确实相交）",
+        "计算量过大时考虑设点差法简化",
+        "参数方程和普通方程混用出错"
+      ]
+    },
+    {
+      "id": "M004",
+      "name": "空间向量坐标法",
+      "category": "立体几何",
+      "module": "GEOM",
+      "knowledge_points": [
+        "GEOM-02-04"
+      ],
+      "applicable_types": [
+        "solve",
+        "proof"
+      ],
+      "difficulty_range": [
+        3,
+        5
+      ],
+      "keywords": [
+        "空间向量",
+        "立体几何",
+        "建系",
+        "二面角",
+        "线面角",
+        "法向量"
+      ],
+      "principle": "建立空间直角坐标系，将几何问题转化为向量运算，用法向量求角度",
+      "steps": [
+        "观察几何体特征，选择合适的坐标系原点和轴方向",
+        "写出关键点的坐标",
+        "求相关平面的法向量 $\\vec{n}$（叉乘或待定系数法）",
+        "用向量公式求角：线面角 $\\sin\\theta=\\frac{|\\vec{d} \\cdot \\vec{n}|}{|\\vec{d}||\\vec{n}|}$，二面角余弦",
+        "判断角的锐钝性，写出最终结果"
+      ],
+      "common_forms": [
+        "法向量：设 $\\vec{n}=(x,y,z)$，由 $\\vec{n} \\cdot \\vec{a}=0$ 且 $\\vec{n} \\cdot \\vec{b}=0$ 解出",
+        "二面角：$\\cos\\theta=\\frac{\\vec{n_1} \\cdot \\vec{n_2}}{|\\vec{n_1}||\\vec{n_2}|}$",
+        "线面角：$\\sin\\theta=\\frac{|\\vec{d} \\cdot \\vec{n}|}{|\\vec{d}||\\vec{n}|}$"
+      ],
+      "examples": [
+        "Q008"
+      ],
+      "pitfalls": [
+        "建系不当导致坐标复杂（优先利用垂直关系）",
+        "二面角锐钝判断需看法向量方向",
+        "证明线面垂直需要两个不共线方向"
+      ]
+    },
+    {
+      "id": "M005",
+      "name": "分离参数法",
+      "category": "恒成立问题",
+      "module": "FUNC",
+      "knowledge_points": [
+        "FUNC-05-04",
+        "FUNC-05-03"
+      ],
+      "applicable_types": [
+        "solve",
+        "fill"
+      ],
+      "difficulty_range": [
+        3,
+        5
+      ],
+      "keywords": [
+        "恒成立",
+        "参数范围",
+        "分离参数",
+        "最值",
+        "存在性"
+      ],
+      "principle": "将含参不等式中的参数分离到一侧，转化为求另一侧函数的最值问题",
+      "steps": [
+        "识别含参不等式：$f(x,a) \\geq 0$ 对 $x \\in D$ 恒成立",
+        "分离参数：$a \\geq g(x)$ 或 $a \\leq g(x)$（参数在一侧，不含 $a$ 的在另一侧）",
+        "恒成立 → $a \\geq \\max g(x)$ 或 $a \\leq \\min g(x)$",
+        "求 $g(x)$ 的最值（导数法）",
+        "写出参数范围"
+      ],
+      "common_forms": [
+        "$f(x) \\geq 0$ 恒成立 → $a \\geq f(x)/h(x)$ 的最大值",
+        "$f(x) \\leq 0$ 恒成立 → $a \\leq f(x)/h(x)$ 的最小值",
+        "存在性：$a \\geq \\min g(x)$ 或 $a \\leq \\max g(x)$"
+      ],
+      "examples": [
+        "Q012"
+      ],
+      "pitfalls": [
+        "分离时除式为 0 的情况需单独讨论",
+        "不能分离时（参数出现在多处）需用端点效应或分类讨论",
+        "存在性与恒成立的最大/最小值方向相反"
+      ]
+    },
+    {
+      "id": "M006",
+      "name": "基本不等式配凑法",
+      "category": "最值求解",
+      "module": "ALGE",
+      "knowledge_points": [
+        "ALGE-01-02"
+      ],
+      "applicable_types": [
+        "fill",
+        "solve"
+      ],
+      "difficulty_range": [
+        2,
+        4
+      ],
+      "keywords": [
+        "基本不等式",
+        "最值",
+        "配凑",
+        "$1$ 的代换",
+        "乘$1$法"
+      ],
+      "principle": "利用 $a+b \\geq 2\\sqrt{ab}$（或 $ab \\leq \\frac{(a+b)^2}{4}$）求最值，需满足'一正二定三相等'",
+      "steps": [
+        "识别求最值目标（和的最值或积的最值）",
+        "检查条件是否满足'一正'（各项为正）",
+        "配凑使'二定'（和定求积最大，积定求和最小）",
+        "验证'三相等'（等号成立条件是否可达）",
+        "写出最值及等号成立条件"
+      ],
+      "common_forms": [
+        "乘$1$法：$\\frac{1}{x}+\\frac{1}{y}=(\\frac{1}{x}+\\frac{1}{y})(x+2y)$",
+        "配凑系数：$x+\\frac{k}{x} \\geq 2\\sqrt{k}$",
+        "权方和：$\\frac{a^2}{x}+\\frac{b^2}{y} \\geq \\frac{(a+b)^2}{x+y}$"
+      ],
+      "examples": [
+        "Q009"
+      ],
+      "pitfalls": [
+        "等号不成立时基本不等式失效，需用函数单调性",
+        "多次使用不等式时等号条件需同时满足",
+        "配凑方向选择错误（和定 vs 积定）"
+      ]
+    },
+    {
+      "id": "M007",
+      "name": "[模拟] 配方法",
+      "category": "二次函数",
+      "module": "FUNC",
+      "principle": "将 $ax^2+bx+c$ 化为 $a(x-h)^2+k$ 形式",
+      "steps": [
+        "提取 $a$",
+        "配中项 $\\frac{b}{2a}$",
+        "加减平衡",
+        "写出顶点式"
+      ],
+      "keywords": [
+        "二次函数",
+        "配方"
+      ],
+      "applicable_types": [
+        "fill",
+        "solve"
+      ],
+      "difficulty_range": [
+        2,
+        4
+      ],
+      "common_forms": [
+        "$ax^2+bx+c = a(x+\\frac{b}{2a})^2 + c-\\frac{b^2}{4a}$"
+      ],
+      "pitfalls": [
+        "配方时忘记提取系数 $a$"
+      ],
+      "status": "active",
+      "created_at": "2026-07-22T12:46:48.811862",
+      "examples": []
+    }
+  ],
+  "reviewQueue": [
+    {
+      "id": "R001",
+      "status": "pending",
+      "source": "image_ocr",
+      "sourceFile": "试卷_全国I卷_2024_第17题.png",
+      "extractedAt": "2026-07-22T10:30:00",
+      "data": {
+        "module": "FUNC",
+        "knowledge_points": [
+          "FUNC-05-03"
+        ],
+        "difficulty": 4,
+        "type": "solve",
+        "stem": "已知函数 $f(x) = \\ln x - \\frac{1}{2}ax^2 + bx$，若 $f(x)$ 在 $x=1$ 处取极大值 $\\frac{1}{2}$。\n(1) 求 $a, b$ 的值；\n(2) 若 $f(x) \\leq \\frac{1}{2}$ 对 $x \\in (0, +\\infty)$ 恒成立，求 $a$ 的取值范围。",
+        "options": [],
+        "answer": "(1) $a=1, b=1$; (2) $a \\geq 1$",
+        "analysis": "(1) $f'(1)=0$ 且 $f(1)=\\frac{1}{2}$ 解得 $a=1,b=1$；(2) 分离参数法或构造辅助函数证明",
+        "tags": [
+          "导数",
+          "极值",
+          "恒成立"
+        ],
+        "source": {
+          "type": "真题",
+          "year": 2024,
+          "region": "全国I卷"
+        }
+      },
+      "aiConfidence": 0.92,
+      "reviewNotes": ""
+    },
+    {
+      "id": "R002",
+      "status": "pending",
+      "source": "pdf_parse",
+      "sourceFile": "教案_三角函数_2024秋.docx",
+      "extractedAt": "2026-07-22T10:45:00",
+      "data": {
+        "module": "FUNC",
+        "knowledge_points": [
+          "FUNC-03-04"
+        ],
+        "difficulty": 3,
+        "type": "fill",
+        "stem": "已知 $\\tan\\alpha = 3$，则 $\\sin 2\\alpha + \\cos 2\\alpha = $ ______。",
+        "options": [],
+        "answer": "$\\frac{7}{5}$",
+        "analysis": "$\\sin 2\\alpha = \\frac{2\\tan\\alpha}{1+\\tan^2\\alpha} = \\frac{6}{10}$，$\\cos 2\\alpha = \\frac{1-\\tan^2\\alpha}{1+\\tan^2\\alpha} = \\frac{-8}{10}$... 需复核",
+        "tags": [
+          "三角恒等变换",
+          "二倍角"
+        ],
+        "source": {
+          "type": "教案",
+          "year": 2024
+        }
+      },
+      "aiConfidence": 0.78,
+      "reviewNotes": "公式识别可能有误，cos2α 符号需验证"
+    },
+    {
+      "id": "R003",
+      "status": "pending",
+      "source": "image_ocr",
+      "sourceFile": "笔记_数列求和方法.jpg",
+      "extractedAt": "2026-07-22T11:00:00",
+      "data": {
+        "module": "FUNC",
+        "knowledge_points": [
+          "FUNC-04-04"
+        ],
+        "difficulty": 4,
+        "type": "solve",
+        "stem": "已知数列 $\\{a_n\\}$ 满足 $a_1 = 1$，$a_{n+1} = \\frac{n+1}{n}a_n$，求 $\\sum_{k=1}^{n} \\frac{1}{a_k}$。",
+        "options": [],
+        "answer": "$\\frac{n(n+1)}{2}$",
+        "analysis": "先求 $a_n = n$，再 $\\sum \\frac{1}{n}$ ... 需复核裂项过程",
+        "tags": [
+          "数列",
+          "裂项相消"
+        ],
+        "source": {
+          "type": "手写笔记"
+        }
+      },
+      "aiConfidence": 0.85,
+      "reviewNotes": "手写识别，答案可能有误"
+    }
+  ]
+}

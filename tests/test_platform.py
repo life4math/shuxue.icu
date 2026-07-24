@@ -15,6 +15,7 @@ sys.path.insert(0, SCRIPT_DIR)
 def build_app(tmp_path):
     os.environ["SHUXUE_DATABASE_URL"] = f"sqlite:///{tmp_path / 'test.db'}"
     os.environ["SHUXUE_SESSION_SECRET"] = "test-secret-not-for-production-0123456789"
+    os.environ["SHUXUE_ADMIN_TOKEN"] = "test-admin-token"
     os.environ["SHUXUE_ENV"] = "test"
     os.environ["SHUXUE_LOGIN_ACCOUNT_LIMIT"] = "5"
     os.environ["SHUXUE_LOGIN_IP_LIMIT"] = "8"
@@ -58,6 +59,48 @@ def test_alembic_baseline_creates_and_versions_schema(tmp_path):
         assert connection.execute(text("SELECT version_num FROM alembic_version")).scalar_one() == (
             "0001_platform_baseline"
         )
+
+
+def test_public_demo_json_is_read_only(tmp_path):
+    app, _ = build_app(tmp_path)
+    client = app.test_client()
+
+    questions = client.get("/api/questions")
+    methods = client.get("/api/methods")
+    assert questions.status_code == 200
+    assert len(questions.get_json()["items"]) == 17
+    assert methods.status_code == 200
+    assert len(methods.get_json()["items"]) == 7
+
+    removed = client.post(
+        "/api/save-question",
+        json={"stem": "不应写入静态文件"},
+        headers={"X-Admin-Token": "test-admin-token"},
+    )
+    assert removed.status_code == 410
+    assert removed.get_json()["replacement"].startswith("/api/v1/")
+
+
+def test_cli_ingest_enqueues_database_job(tmp_path, monkeypatch):
+    _, db_module = build_app(tmp_path)
+    email, _ = create_user(db_module)
+    sys.modules.pop("ingest", None)
+    ingest = importlib.import_module("ingest")
+    monkeypatch.setattr(ingest, "UPLOAD_DIR", tmp_path / "uploads")
+
+    source = tmp_path / "sample.txt"
+    source.write_text("函数与集合测试材料", encoding="utf-8")
+    db = db_module.SessionLocal()
+    owner = db.scalar(select(db_module.User).where(db_module.User.email == email))
+    queued = ingest.enqueue_file(db, owner, source)
+    db.commit()
+
+    job = db.get(db_module.AIJob, queued["job_id"])
+    upload = db.get(db_module.UploadFile, queued["upload_id"])
+    assert job.status == "queued"
+    assert upload.sha256
+    assert (ingest.UPLOAD_DIR / upload.stored_name).read_text("utf-8") == "函数与集合测试材料"
+    db_module.SessionLocal.remove()
 
 
 def test_admin_only_user_management(tmp_path):

@@ -144,7 +144,7 @@ bash deploy/setup.sh
 ## Production Server Notes
 
 - Server: Alibaba Cloud Linux 3.2104 LTS (等保2.0三级版)
-- Python 3.8 (no python39 available on this system)
+- Python 3.11（Alibaba Cloud Linux 官方更新仓库；旧 3.8 venv 仅保留作迁移回滚）
 - Gunicorn on port 8000 (port 5000 occupied by RemoteManage/.NET)
 - nginx.conf must include `include /etc/nginx/conf.d/*.conf;` (missing by default on 等保2.0)
 - Nginx config needs `default_server` + `server_name _;` to override built-in default server block
@@ -156,5 +156,5 @@ bash deploy/setup.sh
 - Do not hardcode colors that should use CSS variables
 - Do not commit config.json, uploads/, or any secrets
 - Do not change background/text/border colors based on theme
-- Do not use python39 on the production server (only python38 available)
+- Production services must use `/var/www/shuxue/venv311`; do not switch back to the EOL Python 3.8 venv except during rollback
 

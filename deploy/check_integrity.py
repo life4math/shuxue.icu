@@ -33,6 +33,15 @@ STRUCTURE_CHECKS = {
     "website/js/app.js": ["function initPage"],
     "website/css/style.css": [":root"],
     "requirements-py38.lock": ["--hash=sha256:"],
+    "requirements-py311.lock": ["--hash=sha256:"],
+    "website/data/demo-content.json": ['"questions"', '"methods"'],
+    "website/data/knowledge-content.json": ['"FUNC-01-01"'],
+}
+
+FORBIDDEN_RUNTIME_PATTERNS = {
+    "website/scripts/server.py": ["runInNewContext", "write_data_js"],
+    "website/scripts/seed_knowledge.py": ["runInNewContext", "subprocess"],
+    "website/scripts/ingest.py": ["data.js", "write_text("],
 }
 
 
@@ -78,6 +87,12 @@ def main():
         for needle in needles:
             if needle not in text:
                 errors.append(f"{rel}: 缺少预期结构标记 {needle!r}（可能被截断或损坏）")
+
+    for rel, forbidden in FORBIDDEN_RUNTIME_PATTERNS.items():
+        text = (ROOT / rel).read_text("utf-8")
+        for needle in forbidden:
+            if needle in text:
+                errors.append(f"{rel}: 仍含已停用的可执行静态数据路径 {needle!r}")
 
     if errors:
         print("[ERROR] 完整性校验未通过：", file=sys.stderr)
